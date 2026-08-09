@@ -1,0 +1,53 @@
+name: "其它BUG反馈"
+description: "点击此选项反馈其它BUG，通常是与程序毫不相关的BUG，反馈程序BUG请点击程序BUG反馈"
+labels: ["BUG", "🆕新提交🆕"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 其它 Bug 反馈
+        感谢你花时间反馈问题！请尽可能详细地填写以下信息。
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 检查项
+      description: "请逐个检查下列项目，并勾选确认。"
+      options:
+        - label: "我已在 [Issues 页面](https://github.com/computer-and-virus/SysTunerProgram/issues)中搜索，确认了这个 Bug 从未被提交过。"
+          required: true
+        - label: "我已确认我提交的BUG是与程序毫不相关的。"
+          required: true
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统
+      description: "你在用什么系统？"
+      placeholder: "例：Windows 11"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 描述问题
+      description: "请在下方大输入框中详细描述你所遇到的BUG，例如在哪，具体表现等："
+      placeholder: "例：我发现在...出现...问题，具体是..."
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce_steps
+    attributes:
+      label: 重现步骤
+      description: "请在下方大输入框中输入您发现这个 Bug 的操作步骤："
+      placeholder: |
+        1. 打开程序...
+        2. 点击...
+        3. 出现错误...
+        4. ...
+    validations:
+      required: true
