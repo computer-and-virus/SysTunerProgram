@@ -1,0 +1,78 @@
+name: "程序BUG反馈"
+description: "程序发生BUG，包括输出BUG，命令BUG，读取BUG等"
+labels: ["BUG", "🆕新提交🆕"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Bug 反馈
+        感谢你花时间反馈问题！请尽可能详细地填写以下信息。
+
+  - type: checkboxes
+  id: checklist
+  attributes:
+    label: 检查项
+    description: "请逐个检查下列项目，并勾选确认。"
+    options:
+      - label: "我已在 [Issues 页面](https://github.com/computer-and-virus/SysTunerProgram/issues)中搜索，确认了这个 Bug 从未被提交过。"
+        required: true
+      - label: "我已确认我的程序版本已为最新版本。"
+        required: true
+      - label: "我已确认完全是程序本身BUG，而不是客观因素与人为因素影响，包括电脑网络没连好导致下载失败，手动修改配置文件导致配置文件读取失败等。"
+        required: true
+  validations:
+    required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统
+      description: "你在用什么系统？"
+      placeholder: "例：Windows 11"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: severity
+    attributes:
+      label: 反馈位置
+      description: "请选择你要反馈的这个 Bug 的位置"
+      options:
+        - 初始化问题（包括配置文件读取问题、PowerShell 安装问题等选择此选项）
+        - 菜单排版或显示问题（包括菜单主界面不显示问题，排版有错误问题等选择此选项）
+        - 功能问题（包括功能失效问题，功能显示问题等选择此选项）
+        - 其它问题（包括激活失败问题(前提是请将激活密文输入正确)，模式失效问题等选择此选项）
+        - 无法判断（如果你无法判断当前BUG的位置，请选择此选项，并在描述问题环节详细讲述问题）
+    validations:
+      required: true
+
+ - type: textarea
+   id: "question"
+   attributes:
+      label: 描述问题
+      description: "请在下方大输入框中详细描述你所遇到的BUG，例如在哪，具体表现等："
+      placeholder: "例：我发现在...出现...问题，具体是..."
+   validations:
+      required: true
+
+ - type: textarea
+   id: "question"
+   attributes:
+      label: 重现步骤
+      description: "请在下方大输入框中输入您发现这个 Bug 的操作步骤："
+      placeholder: |
+        1. 打开程序...
+        2. 点击...
+        3. 出现错误...
+        4. ...
+   validations:
+      required: true
+   
+  - type: textarea
+    id: logs
+    attributes:
+      label: 上传日志
+      description: "请把程序目录下的rizhiwenjian.log粘贴在此处"
+      placeholder: "先点击这个大输入框，在直接将日志拖拽在此处以上传。"
+    validations:
+      required: true
