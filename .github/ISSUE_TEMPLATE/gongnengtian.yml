@@ -25,7 +25,7 @@ body:
     id: description
     attributes:
       label: 描述新功能
-      description: "请在下方大输入框中详细描述你想添加的功能具体是怎样的："
+      description: "请在下方大输入框中详细描述你想添加的功能或对已有功能的新修改具体是怎样的："
       placeholder: "例：我想要添加...功能，具体是..."
     validations:
       required: true
@@ -34,9 +34,9 @@ body:
     id: reproduce_steps
     attributes:
       label: 描述原因
-      description: "请在下方大输入框中输入您为什么需要这个功能，这有利于评估是否接受你的新功能："
+      description: "请在下方大输入框中输入您为什么需要这个功能或修改，这有利于评估是否接受你的新功能或新修改："
       placeholder: |
         例如：
-        我需要这个功能来...。很多人都有...的需求，但如果没有这个功能，就不能...了。
+        我需要这个功能/修改来...。很多人都有...的需求，但如果没有这个功能/修改，就不能...了。
     validations:
       required: true
