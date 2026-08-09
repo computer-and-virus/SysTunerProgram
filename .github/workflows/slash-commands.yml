@@ -290,8 +290,8 @@ jobs:
               const bodyText = issue.data.body || '';
               const issueUrl = issue.data.html_url;
 
-              // 获取 Discussions 分类列表
-              const categories = await github.rest.discussions.listCategories({
+              // ✅ 使用 repos.listDiscussionCategories（正确 API）
+              const categories = await github.rest.repos.listDiscussionCategories({
                 owner, repo
               });
 
@@ -302,12 +302,12 @@ jobs:
                 await github.rest.issues.createComment({
                   issue_number: issueNumber,
                   owner, repo,
-                  body: '❌ 未找到 "新功能投票" 分类，请先在 Discussions 中创建该分类。'
+                  body: '❌ 未找到 "新功能投票" 分类，请先在 Discussions → Manage categories 中创建该分类。'
                 });
                 return;
               }
 
-              // 使用正确的 API 创建 Discussion
+              // ✅ 使用 discussions.createInRepo
               await github.rest.discussions.createInRepo({
                 owner, repo,
                 title: title,
