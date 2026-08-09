@@ -1,0 +1,52 @@
+name: "优化建议"
+description: "点击此选项给程序提出优化建议，对已有功能进行代码或层次上的优化"
+labels: ["优化", "🆕新提交🆕"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## 优化建议
+        感谢你花时间提出优化建议！请尽可能详细地填写以下信息。
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: 检查项
+      description: "请逐个检查下列项目，并勾选确认。"
+      options:
+        - label: "我已在 [Issues 页面](https://github.com/computer-and-virus/SysTunerProgram/issues) 中搜索，确认了这个建议从未被提交过。"
+          required: true
+        - label: "我已查看 [新功能投票页面](https://github.com/computer-and-virus/SysTunerProgram/discussions/categories/%E6%96%B0%E5%8A%9F%E8%83%BD%E6%8A%95%E7%A5%A8)，确认了这个建议未在投票列表当中。"
+          required: true
+    validations:
+      required: true
+
+  - type: input
+    id: os
+    attributes:
+      label: 操作系统
+      description: "你在用什么系统？"
+      placeholder: "例：Windows 11"
+    validations:
+      required: true
+
+  - type: textarea
+    id: description
+    attributes:
+      label: 描述优化方案
+      description: "请在下方大输入框中详细描述你的优化方案，例如在哪优化，优化哪些地方等："
+      placeholder: "例：我觉得在...里，将...优化成...，(具体是...)"
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduce_steps
+    attributes:
+      label: 描述原因
+      description: "请在下方大输入框中输入您要这样优化程序的原因，这有利于评估是否接受你的优化方案："
+      placeholder: |
+        例如：
+        这项优化让我可以更方便地...
+        如果没有这项优化，我每次都必须...，让操作变得很麻烦。
+    validations:
+      required: true
