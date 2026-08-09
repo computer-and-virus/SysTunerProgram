@@ -1,11 +1,11 @@
 name: "程序BUG反馈"
-description: "点击此选项反馈BUG，包括程序的输出BUG，命令BUG，读取BUG等"
+description: "点击此选项反馈程序BUG，包括程序的输出BUG，命令BUG，读取BUG等"
 labels: ["BUG", "🆕新提交🆕"]
 body:
   - type: markdown
     attributes:
       value: |
-        ## Bug 反馈
+        ## 程序 Bug 反馈
         感谢你花时间反馈问题！请尽可能详细地填写以下信息。
 
   - type: checkboxes
