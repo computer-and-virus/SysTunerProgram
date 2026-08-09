@@ -1,5 +1,5 @@
 name: "程序BUG反馈"
-description: "反馈程序发生的BUG，包括输出BUG，命令BUG，读取BUG等"
+description: "反馈关于程序的BUG，包括输出BUG，命令BUG，读取BUG等"
 labels: ["BUG", "🆕新提交🆕"]
 body:
   - type: markdown
