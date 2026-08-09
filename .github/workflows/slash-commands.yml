@@ -44,15 +44,12 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
 
-            // 检查用户是否是仓库管理员（Owner 或 Write 权限）
             try {
-              // 方法1：检查是否为仓库 Owner
               if (username === owner) {
                 core.setOutput('isAdmin', 'true');
                 return;
               }
 
-              // 方法2：检查用户的 Collaborator 权限
               const permission = await github.rest.repos.getCollaboratorPermissionLevel({
                 owner,
                 repo,
@@ -60,7 +57,6 @@ jobs:
               });
 
               const perm = permission.data.permission;
-              // admin 或 write 权限视为管理员
               if (perm === 'admin' || perm === 'write') {
                 core.setOutput('isAdmin', 'true');
               } else {
@@ -68,7 +64,6 @@ jobs:
                 core.setOutput('errorMsg', `用户 ${username} 没有管理员权限（当前权限：${perm}），无法执行斜杠命令。`);
               }
             } catch (error) {
-              // 用户不是 Collaborator
               core.setOutput('isAdmin', 'false');
               core.setOutput('errorMsg', `用户 ${username} 不是仓库协作者，无法执行斜杠命令。`);
             }
@@ -284,7 +279,7 @@ jobs:
               return;
             }
 
-            // ----- /投票状态 -----
+            // ===================== 修正后的 /投票状态 =====================
             if (body === '/投票状态') {
               await setLabels(['🗳️投票中🗳️']);
               const issue = await github.rest.issues.get({
@@ -295,11 +290,29 @@ jobs:
               const bodyText = issue.data.body || '';
               const issueUrl = issue.data.html_url;
 
-              await github.rest.discussions.create({
+              // 获取 Discussions 分类列表
+              const categories = await github.rest.discussions.listCategories({
+                owner, repo
+              });
+
+              // 查找 "新功能投票" 分类
+              const category = categories.data.find(c => c.slug === '新功能投票' || c.name === '新功能投票');
+
+              if (!category) {
+                await github.rest.issues.createComment({
+                  issue_number: issueNumber,
+                  owner, repo,
+                  body: '❌ 未找到 "新功能投票" 分类，请先在 Discussions 中创建该分类。'
+                });
+                return;
+              }
+
+              // 使用正确的 API 创建 Discussion
+              await github.rest.discussions.createInRepo({
                 owner, repo,
                 title: title,
                 body: `原提交链接：\n${issueUrl}\n\n想要加入的新功能或对已有功能的新修改：\n${bodyText}\n\n加入/修改原因：\n[请在此填写原因]`,
-                category_slug: '新功能投票'
+                category_id: category.id
               });
               return;
             }
