@@ -1,0 +1,302 @@
+name: Slash Commands
+
+on:
+  issue_comment:
+    types: [created]
+  pull_request_review_comment:
+    types: [created]
+
+jobs:
+  slash-commands:
+    if: |
+      (github.event.issue.pull_request || github.event.issue) &&
+      (github.event.comment.body == '/关闭提交重复' ||
+       github.event.comment.body == '/关闭提交放弃' ||
+       github.event.comment.body == '/关闭提交完成' ||
+       startsWith(github.event.comment.body, '/开始处理 ') ||
+       github.event.comment.body == '/提交完成' ||
+       github.event.comment.body == '/挂起提交' ||
+       github.event.comment.body == '/开启提交' ||
+       github.event.comment.body == '/关闭提交合并' ||
+       github.event.comment.body == '/等待提交者' ||
+       github.event.comment.body == '/暂无计划' ||
+       github.event.comment.body == '/投票状态' ||
+       github.event.comment.body == '/移除投票状态' ||
+       github.event.comment.body == '/关闭评论区' ||
+       github.event.comment.body == '/开启评论区' ||
+       startsWith(github.event.comment.body, '/增加标签 ') ||
+       startsWith(github.event.comment.body, '/移除标签 ') ||
+       startsWith(github.event.comment.body, '/增加并更改标签 '))
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+      pull-requests: write
+      discussions: write
+
+    steps:
+      - name: 处理斜杠命令
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const comment = context.payload.comment.body;
+            const issueNumber = context.payload.issue.number;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const isPR = !!context.payload.issue.pull_request;
+
+            // ===================== 保留标签定义 =====================
+            const keepLabels = [
+              'BUG', '优化', '其它', '初始化', '新功能', '未分类',
+              '菜单功能', '菜单界面'
+            ];
+
+            const priorityLabels = {
+              0: '⚡优先度：小更改⚡',
+              1: '🟢优先度：低🟢',
+              2: '🟡优先度：中🟡',
+              3: '🔴优先度：高🔴',
+              4: '🔥优先度：极高🔥'
+            };
+
+            const allPriorityLabels = Object.values(priorityLabels);
+
+            // ===================== 工具函数 =====================
+            async function getCurrentLabels() {
+              const result = await github.rest.issues.listLabelsOnIssue({
+                issue_number: issueNumber,
+                owner, repo
+              });
+              return result.data.map(l => l.name);
+            }
+
+            async function setLabels(newLabels) {
+              const current = await getCurrentLabels();
+              for (const label of current) {
+                if (!keepLabels.includes(label)) {
+                  await github.rest.issues.removeLabel({
+                    issue_number: issueNumber,
+                    owner, repo,
+                    name: label
+                  }).catch(() => {});
+                }
+              }
+              const filtered = newLabels.filter(l => l && l.length > 0);
+              if (filtered.length > 0) {
+                await github.rest.issues.addLabels({
+                  issue_number: issueNumber,
+                  owner, repo,
+                  labels: filtered
+                });
+              }
+            }
+
+            async function closeIssue(state, closeLabel) {
+              await setLabels(['⛔已关闭⛔', closeLabel]);
+              await github.rest.issues.update({
+                issue_number: issueNumber,
+                owner, repo,
+                state: 'closed',
+                state_reason: state || 'completed'
+              });
+            }
+
+            async function addLabelsOnly(labels) {
+              const filtered = labels.filter(l => l && l.length > 0);
+              if (filtered.length > 0) {
+                await github.rest.issues.addLabels({
+                  issue_number: issueNumber,
+                  owner, repo,
+                  labels: filtered
+                });
+              }
+            }
+
+            async function removeLabelsOnly(labels) {
+              for (const label of labels) {
+                await github.rest.issues.removeLabel({
+                  issue_number: issueNumber,
+                  owner, repo,
+                  name: label
+                }).catch(() => {});
+              }
+            }
+
+            async function lockComments() {
+              await github.rest.issues.lock({
+                issue_number: issueNumber,
+                owner, repo,
+                lock_reason: 'resolved'
+              });
+            }
+
+            async function unlockComments() {
+              await github.rest.issues.unlock({
+                issue_number: issueNumber,
+                owner, repo
+              }).catch(() => {});
+            }
+
+            async function reopenIssue() {
+              await github.rest.issues.update({
+                issue_number: issueNumber,
+                owner, repo,
+                state: 'open'
+              });
+            }
+
+            // ===================== 命令处理 =====================
+            const body = comment.trim();
+
+            // ----- /关闭提交重复 -----
+            if (body === '/关闭提交重复') {
+              await closeIssue('duplicate', '🔁重复🔁');
+              return;
+            }
+
+            // ----- /关闭提交放弃 -----
+            if (body === '/关闭提交放弃') {
+              await closeIssue('not_planned', '🙅拒绝 / 放弃🙅');
+              return;
+            }
+
+            // ----- /关闭提交完成 -----
+            if (body === '/关闭提交完成') {
+              await closeIssue('completed', '✅已完成且已应用✅');
+              return;
+            }
+
+            // ----- /提交完成 -----
+            if (body === '/提交完成') {
+              await setLabels(['⏳已完成但未应用⏳']);
+              return;
+            }
+
+            // ----- /挂起提交 -----
+            if (body === '/挂起提交') {
+              const current = await getCurrentLabels();
+              const keepAll = [...keepLabels, ...allPriorityLabels];
+              for (const label of current) {
+                if (!keepAll.includes(label)) {
+                  await github.rest.issues.removeLabel({
+                    issue_number: issueNumber,
+                    owner, repo,
+                    name: label
+                  }).catch(() => {});
+                }
+              }
+              await addLabelsOnly(['⏸️已挂起⏸️']);
+              return;
+            }
+
+            // ----- /开始处理 [数字] -----
+            if (body.startsWith('/开始处理 ')) {
+              const parts = body.split(' ');
+              const num = parseInt(parts[1]);
+              const priorityLabel = priorityLabels[num] || '';
+              const finalLabels = ['🔧处理中🔧'];
+              if (priorityLabel) finalLabels.push(priorityLabel);
+              await setLabels(finalLabels);
+              return;
+            }
+
+            // ----- /开启提交 -----
+            if (body === '/开启提交') {
+              await setLabels(['🕐等待处理🕐']);
+              await reopenIssue();
+              return;
+            }
+
+            // ----- /关闭提交合并 -----
+            if (body === '/关闭提交合并') {
+              await closeIssue('duplicate', '🔀已合并🔀');
+              return;
+            }
+
+            // ----- /等待提交者 -----
+            if (body === '/等待提交者') {
+              await setLabels(['🧑‍💻等待提交者🧑‍💻']);
+              return;
+            }
+
+            // ----- /暂无计划 -----
+            if (body === '/暂无计划') {
+              await setLabels(['🗓️暂无计划🗓️']);
+              return;
+            }
+
+            // ----- /投票状态 -----
+            if (body === '/投票状态') {
+              await setLabels(['🗳️投票中🗳️']);
+              const issue = await github.rest.issues.get({
+                issue_number: issueNumber,
+                owner, repo
+              });
+              const title = issue.data.title;
+              const bodyText = issue.data.body || '';
+              const issueUrl = issue.data.html_url;
+
+              await github.rest.discussions.create({
+                owner, repo,
+                title: title,
+                body: `原提交链接：\n${issueUrl}\n\n想要加入的新功能或对已有功能的新修改：\n${bodyText}\n\n加入/修改原因：\n[请在此填写原因]`,
+                category_slug: '新功能投票'
+              });
+              return;
+            }
+
+            // ----- /移除投票状态（修改后） -----
+            if (body === '/移除投票状态') {
+              await setLabels(['🕐等待处理🕐']);
+              return;
+            }
+
+            // ----- /关闭评论区 -----
+            if (body === '/关闭评论区') {
+              await addLabelsOnly(['🔒评论区已锁定🔒']);
+              await lockComments();
+              return;
+            }
+
+            // ----- /开启评论区 -----
+            if (body === '/开启评论区') {
+              await removeLabelsOnly(['🔒评论区已锁定🔒']);
+              await unlockComments();
+              return;
+            }
+
+            // ----- /增加标签 [label1][label2]... -----
+            if (body.startsWith('/增加标签 ')) {
+              const labelPart = body.substring('/增加标签 '.length);
+              const matches = labelPart.match(/\[([^\]]+)\]/g);
+              if (matches) {
+                const labels = matches.map(m => m.slice(1, -1));
+                await addLabelsOnly(labels);
+              }
+              return;
+            }
+
+            // ----- /移除标签 [label1][label2]... -----
+            if (body.startsWith('/移除标签 ')) {
+              const labelPart = body.substring('/移除标签 '.length);
+              const matches = labelPart.match(/\[([^\]]+)\]/g);
+              if (matches) {
+                const labels = matches.map(m => m.slice(1, -1));
+                await removeLabelsOnly(labels);
+              }
+              return;
+            }
+
+            // ----- /增加并更改标签 [旧标签][新标签] -----
+            if (body.startsWith('/增加并更改标签 ')) {
+              const labelPart = body.substring('/增加并更改标签 '.length);
+              const matches = labelPart.match(/\[([^\]]+)\]/g);
+              if (matches && matches.length >= 2) {
+                const oldLabel = matches[0].slice(1, -1);
+                const newLabel = matches[1].slice(1, -1);
+                await removeLabelsOnly([oldLabel]);
+                await addLabelsOnly([newLabel]);
+              }
+              return;
+            }
+
+            console.log('未匹配任何命令');
