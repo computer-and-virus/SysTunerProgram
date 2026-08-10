@@ -279,7 +279,7 @@ jobs:
               return;
             }
 
-            // ===================== 修正后的 /投票状态（使用 REST API） =====================
+            // ===================== 修正后的 /投票状态 =====================
             if (body === '/投票状态') {
               await setLabels(['🗳️投票中🗳️']);
               const issue = await github.rest.issues.get({
@@ -290,37 +290,13 @@ jobs:
               const bodyText = issue.data.body || '';
               const issueUrl = issue.data.html_url;
 
-              // ✅ 使用 REST API 获取分类列表
-              const categoriesResponse = await github.request('GET /repos/{owner}/{repo}/discussions/categories', {
-                owner: owner,
-                repo: repo,
-                headers: {
-                  'X-GitHub-Api-Version': '2022-11-28'
-                }
-              });
-
-              // 查找 "新功能投票" 分类
-              const category = categoriesResponse.data.find(c => c.slug === '新功能投票' || c.name === '新功能投票');
-
-              if (!category) {
-                await github.rest.issues.createComment({
-                  issue_number: issueNumber,
-                  owner, repo,
-                  body: '❌ 未找到 "新功能投票" 分类，请先在 Discussions → Manage categories 中创建该分类。'
-                });
-                return;
-              }
-
-              // ✅ 使用 REST API 创建 Discussion
-              await github.request('POST /repos/{owner}/{repo}/discussions', {
+              // ✅ 直接使用 category_slug 创建
+              await github.rest.discussions.createInRepo({
                 owner: owner,
                 repo: repo,
                 title: title,
                 body: `原提交链接：\n${issueUrl}\n\n想要加入的新功能或对已有功能的新修改：\n${bodyText}\n\n加入/修改原因：\n[请在此填写原因]`,
-                category_id: category.id,
-                headers: {
-                  'X-GitHub-Api-Version': '2022-11-28'
-                }
+                category_slug: '新功能投票'
               });
               return;
             }
