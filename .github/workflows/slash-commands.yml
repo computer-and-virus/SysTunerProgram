@@ -90,6 +90,8 @@ jobs:
       - name: 处理斜杠命令
         if: steps.check_permission.outputs.isAdmin == 'true'
         uses: actions/github-script@v7
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         with:
           script: |
             const comment = context.payload.comment.body;
@@ -97,6 +99,7 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const isPR = !!context.payload.issue.pull_request;
+            const token = process.env.PAT_TOKEN;
 
             const keepLabels = [
               'BUG', '优化', '其它', '初始化', '新功能', '未分类',
@@ -318,7 +321,7 @@ jobs:
               return;
             }
 
-            // ===================== 删除提交（使用 GraphQL） =====================
+            // ===================== /删除提交（使用 PAT） =====================
             if (body === '/删除提交') {
               const query = `
                 mutation DeleteIssue($input: DeleteIssueInput!) {
@@ -334,7 +337,11 @@ jobs:
                 }
               };
 
-              await github.graphql(query, variables);
+              // 使用 PAT 创建认证的 Octokit 实例
+              const { Octokit } = require('@octokit/rest');
+              const octokit = new Octokit({ auth: token });
+
+              await octokit.graphql(query, variables);
               return;
             }
 
