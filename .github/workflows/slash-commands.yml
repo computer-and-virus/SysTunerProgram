@@ -97,9 +97,7 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const isPR = !!context.payload.issue.pull_request;
-            const username = context.payload.comment.user.login;
 
-            // ===================== 保留标签定义 =====================
             const keepLabels = [
               'BUG', '优化', '其它', '初始化', '新功能', '未分类',
               '菜单功能', '菜单界面'
@@ -115,7 +113,6 @@ jobs:
 
             const allPriorityLabels = Object.values(priorityLabels);
 
-            // ===================== 工具函数 =====================
             async function getCurrentLabels() {
               const result = await github.rest.issues.listLabelsOnIssue({
                 issue_number: issueNumber,
@@ -199,7 +196,6 @@ jobs:
               });
             }
 
-            // ===================== 命令处理 =====================
             const body = comment.trim();
 
             // ----- /关闭提交重复 -----
@@ -279,7 +275,7 @@ jobs:
               return;
             }
 
-            // ===================== /投票状态（使用 GraphQL） =====================
+            // ----- /投票状态 -----
             if (body === '/投票状态') {
               await setLabels(['🗳️投票中🗳️']);
               const issue = await github.rest.issues.get({
@@ -289,6 +285,8 @@ jobs:
               const title = issue.data.title;
               const bodyText = issue.data.body || '';
               const issueUrl = issue.data.html_url;
+
+              const CATEGORY_ID = '你的分类ID';
 
               const query = `
                 mutation CreateDiscussion($input: CreateDiscussionInput!) {
@@ -306,7 +304,7 @@ jobs:
                   repositoryId: context.payload.repository.node_id,
                   title: title,
                   body: `原提交链接：\n${issueUrl}\n\n想要加入的新功能或对已有功能的新修改：\n${bodyText}\n\n加入/修改原因：\n[请在此填写原因]`,
-                  categorySlug: '新功能投票'
+                  categoryId: CATEGORY_ID
                 }
               };
 
@@ -320,21 +318,23 @@ jobs:
               return;
             }
 
-            // ----- /删除提交 -----
+            // ===================== 删除提交（使用 GraphQL） =====================
             if (body === '/删除提交') {
-              if (isPR) {
-                await github.rest.pulls.update({
-                  pull_number: issueNumber,
-                  owner, repo,
-                  state: 'closed'
-                });
-              } else {
-                await github.rest.issues.update({
-                  issue_number: issueNumber,
-                  owner, repo,
-                  state: 'closed'
-                });
-              }
+              const query = `
+                mutation DeleteIssue($input: DeleteIssueInput!) {
+                  deleteIssue(input: $input) {
+                    clientMutationId
+                  }
+                }
+              `;
+
+              const variables = {
+                input: {
+                  issueId: context.payload.issue.node_id
+                }
+              };
+
+              await github.graphql(query, variables);
               return;
             }
 
@@ -352,7 +352,7 @@ jobs:
               return;
             }
 
-            // ----- /增加标签 标签1 标签2 ... -----
+            // ----- /增加标签 -----
             if (body.startsWith('/增加标签 ')) {
               const labelPart = body.substring('/增加标签 '.length).trim();
               const labels = labelPart.split(/\s+/).filter(l => l.length > 0);
@@ -362,7 +362,7 @@ jobs:
               return;
             }
 
-            // ----- /移除标签 标签1 标签2 ... -----
+            // ----- /移除标签 -----
             if (body.startsWith('/移除标签 ')) {
               const labelPart = body.substring('/移除标签 '.length).trim();
               const labels = labelPart.split(/\s+/).filter(l => l.length > 0);
@@ -372,7 +372,7 @@ jobs:
               return;
             }
 
-            // ----- /增加并更改标签 旧标签 新标签 -----
+            // ----- /增加并更改标签 -----
             if (body.startsWith('/增加并更改标签 ')) {
               const parts = body.substring('/增加并更改标签 '.length).trim().split(/\s+/);
               if (parts.length >= 2) {
