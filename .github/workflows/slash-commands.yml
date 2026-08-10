@@ -14,6 +14,7 @@ jobs:
        github.event.comment.body == '/关闭提交放弃' ||
        github.event.comment.body == '/关闭提交完成' ||
        startsWith(github.event.comment.body, '/开始处理 ') ||
+       github.event.comment.body == '/开始处理' ||
        github.event.comment.body == '/提交完成' ||
        github.event.comment.body == '/挂起提交' ||
        github.event.comment.body == '/开启提交' ||
@@ -219,20 +220,15 @@ jobs:
               return;
             }
 
-            // ----- /挂起提交 -----
+            // ----- /挂起提交（使用 setLabels） -----
             if (body === '/挂起提交') {
-              const current = await getCurrentLabels();
-              const keepAll = [...keepLabels, ...allPriorityLabels];
-              for (const label of current) {
-                if (!keepAll.includes(label)) {
-                  await github.rest.issues.removeLabel({
-                    issue_number: issueNumber,
-                    owner, repo,
-                    name: label
-                  }).catch(() => {});
-                }
-              }
-              await addLabelsOnly(['⏸️已挂起⏸️']);
+              await setLabels(['⏸️已挂起⏸️']);
+              return;
+            }
+
+            // ----- /开始处理 -----
+            if (body === '/开始处理') {
+              await setLabels(['🔧处理中🔧']);
               return;
             }
 
@@ -240,10 +236,15 @@ jobs:
             if (body.startsWith('/开始处理 ')) {
               const parts = body.split(' ');
               const num = parseInt(parts[1]);
-              const priorityLabel = priorityLabels[num] || '';
-              const finalLabels = ['🔧处理中🔧'];
-              if (priorityLabel) finalLabels.push(priorityLabel);
-              await setLabels(finalLabels);
+              // 如果后面没有数字或数字无效，只加处理中标签
+              if (isNaN(num) || num < 0 || num > 4) {
+                await setLabels(['🔧处理中🔧']);
+              } else {
+                const priorityLabel = priorityLabels[num] || '';
+                const finalLabels = ['🔧处理中🔧'];
+                if (priorityLabel) finalLabels.push(priorityLabel);
+                await setLabels(finalLabels);
+              }
               return;
             }
 
@@ -254,7 +255,7 @@ jobs:
               return;
             }
 
-            // ----- /关闭提交合并（已修改为 completed） -----
+            // ----- /关闭提交合并 -----
             if (body === '/关闭提交合并') {
               await closeIssue('completed', '🔀已合并🔀');
               return;
