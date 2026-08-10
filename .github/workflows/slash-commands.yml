@@ -94,9 +94,10 @@ jobs:
             const repo = context.repo.repo;
             const isPR = !!context.payload.issue.pull_request;
 
+            // ===================== 保留标签定义 =====================
             const keepLabels = [
               'BUG', '优化', '其它', '初始化', '新功能', '未分类',
-              '菜单功能', '菜单界面'
+              '菜单功能', '菜单界面', '🔒评论区已锁定🔒'
             ];
 
             const priorityLabels = {
