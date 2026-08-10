@@ -279,7 +279,7 @@ jobs:
               return;
             }
 
-            // ===================== 修正后的 /投票状态 =====================
+            // ----- /投票状态 -----
             if (body === '/投票状态') {
               await setLabels(['🗳️投票中🗳️']);
               const issue = await github.rest.issues.get({
@@ -290,12 +290,10 @@ jobs:
               const bodyText = issue.data.body || '';
               const issueUrl = issue.data.html_url;
 
-              // ✅ 使用 repos.listDiscussionCategories（正确 API）
-              const categories = await github.rest.repos.listDiscussionCategories({
+              const categories = await github.rest.discussions.listCategoriesForRepo({
                 owner, repo
               });
 
-              // 查找 "新功能投票" 分类
               const category = categories.data.find(c => c.slug === '新功能投票' || c.name === '新功能投票');
 
               if (!category) {
@@ -307,7 +305,6 @@ jobs:
                 return;
               }
 
-              // ✅ 使用 discussions.createInRepo
               await github.rest.discussions.createInRepo({
                 owner, repo,
                 title: title,
@@ -355,35 +352,32 @@ jobs:
               return;
             }
 
-            // ----- /增加标签 [label1][label2]... -----
+            // ----- /增加标签 标签1 标签2 ... -----
             if (body.startsWith('/增加标签 ')) {
-              const labelPart = body.substring('/增加标签 '.length);
-              const matches = labelPart.match(/\[([^\]]+)\]/g);
-              if (matches) {
-                const labels = matches.map(m => m.slice(1, -1));
+              const labelPart = body.substring('/增加标签 '.length).trim();
+              const labels = labelPart.split(/\s+/).filter(l => l.length > 0);
+              if (labels.length > 0) {
                 await addLabelsOnly(labels);
               }
               return;
             }
 
-            // ----- /移除标签 [label1][label2]... -----
+            // ----- /移除标签 标签1 标签2 ... -----
             if (body.startsWith('/移除标签 ')) {
-              const labelPart = body.substring('/移除标签 '.length);
-              const matches = labelPart.match(/\[([^\]]+)\]/g);
-              if (matches) {
-                const labels = matches.map(m => m.slice(1, -1));
+              const labelPart = body.substring('/移除标签 '.length).trim();
+              const labels = labelPart.split(/\s+/).filter(l => l.length > 0);
+              if (labels.length > 0) {
                 await removeLabelsOnly(labels);
               }
               return;
             }
 
-            // ----- /增加并更改标签 [旧标签][新标签] -----
+            // ----- /增加并更改标签 旧标签 新标签 -----
             if (body.startsWith('/增加并更改标签 ')) {
-              const labelPart = body.substring('/增加并更改标签 '.length);
-              const matches = labelPart.match(/\[([^\]]+)\]/g);
-              if (matches && matches.length >= 2) {
-                const oldLabel = matches[0].slice(1, -1);
-                const newLabel = matches[1].slice(1, -1);
+              const parts = body.substring('/增加并更改标签 '.length).trim().split(/\s+/);
+              if (parts.length >= 2) {
+                const oldLabel = parts[0];
+                const newLabel = parts[1];
                 await removeLabelsOnly([oldLabel]);
                 await addLabelsOnly([newLabel]);
               }
