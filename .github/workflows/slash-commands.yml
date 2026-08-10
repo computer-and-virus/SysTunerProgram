@@ -20,9 +20,6 @@ jobs:
        github.event.comment.body == '/关闭提交合并' ||
        github.event.comment.body == '/等待提交者' ||
        github.event.comment.body == '/暂无计划' ||
-       github.event.comment.body == '/投票状态' ||
-       github.event.comment.body == '/移除投票状态' ||
-       github.event.comment.body == '/删除提交' ||
        github.event.comment.body == '/关闭评论区' ||
        github.event.comment.body == '/开启评论区' ||
        startsWith(github.event.comment.body, '/增加标签 ') ||
@@ -32,7 +29,6 @@ jobs:
     permissions:
       issues: write
       pull-requests: write
-      discussions: write
 
     steps:
       - name: 检查管理员权限
@@ -90,8 +86,6 @@ jobs:
       - name: 处理斜杠命令
         if: steps.check_permission.outputs.isAdmin == 'true'
         uses: actions/github-script@v7
-        env:
-          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
         with:
           script: |
             const comment = context.payload.comment.body;
@@ -99,7 +93,6 @@ jobs:
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const isPR = !!context.payload.issue.pull_request;
-            const token = process.env.PAT_TOKEN;
 
             const keepLabels = [
               'BUG', '优化', '其它', '初始化', '新功能', '未分类',
@@ -275,77 +268,6 @@ jobs:
             // ----- /暂无计划 -----
             if (body === '/暂无计划') {
               await setLabels(['🗓️暂无计划🗓️']);
-              return;
-            }
-
-            // ----- /投票状态 -----
-            if (body === '/投票状态') {
-              await setLabels(['🗳️投票中🗳️']);
-              const issue = await github.rest.issues.get({
-                issue_number: issueNumber,
-                owner, repo
-              });
-              const title = issue.data.title;
-              const bodyText = issue.data.body || '';
-              const issueUrl = issue.data.html_url;
-
-              const CATEGORY_ID = '你的分类ID';
-
-              const query = `
-                mutation CreateDiscussion($input: CreateDiscussionInput!) {
-                  createDiscussion(input: $input) {
-                    discussion {
-                      id
-                      url
-                    }
-                  }
-                }
-              `;
-
-              const variables = {
-                input: {
-                  repositoryId: context.payload.repository.node_id,
-                  title: title,
-                  body: `原提交链接：\n${issueUrl}\n\n想要加入的新功能或对已有功能的新修改：\n${bodyText}\n\n加入/修改原因：\n[请在此填写原因]`,
-                  categoryId: CATEGORY_ID
-                }
-              };
-
-              await github.graphql(query, variables);
-              return;
-            }
-
-            // ----- /移除投票状态 -----
-            if (body === '/移除投票状态') {
-              await setLabels(['🕐等待处理🕐']);
-              return;
-            }
-
-            // ===================== /删除提交 =====================
-            if (body === '/删除提交') {
-              // 用 token 创建新的 GitHub 客户端
-              const { GraphQLClient } = require('@octokit/graphql');
-              const graphqlWithAuth = new GraphQLClient({
-                headers: {
-                  authorization: `token ${token}`
-                }
-              });
-
-              const query = `
-                mutation DeleteIssue($input: DeleteIssueInput!) {
-                  deleteIssue(input: $input) {
-                    clientMutationId
-                  }
-                }
-              `;
-
-              const variables = {
-                input: {
-                  issueId: context.payload.issue.node_id
-                }
-              };
-
-              await graphqlWithAuth(query, variables);
               return;
             }
 
