@@ -16,7 +16,7 @@ body:
       options:
         - label: "我已在 [Issues 页面](https://github.com/computer-and-virus/SysTunerProgram/issues) 中搜索，确认了这个建议从未被提交过。"
           required: true
-        - label: "我已查看 [新功能投票页面](https://github.com/computer-and-virus/SysTunerProgram/discussions/categories/%E6%96%B0%E5%8A%9F%E8%83%BD%E6%8A%95%E7%A5%A8)，确认了这个建议未在投票列表当中。"
+        - label: "我已确认了这个优化是可以修改且符合常理的。"
           required: true
     validations:
       required: true
