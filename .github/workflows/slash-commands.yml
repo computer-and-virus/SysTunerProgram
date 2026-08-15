@@ -133,19 +133,79 @@ jobs:
               return result.repository.discussion.id;
             }
 
+            async function getRepositoryId() {
+              const query = `
+                query($owner: String!, $repo: String!) {
+                  repository(owner: $owner, name: $repo) {
+                    id
+                  }
+                }
+              `;
+              const result = await github.graphql(query, { owner, repo });
+              return result.repository.id;
+            }
+
             async function discussionAddLabels(labels) {
               const labelableId = await getDiscussionId();
               console.log('labelableId:', labelableId);
-              console.log('要添加的标签:', labels);
+              console.log('要添加的标签名称:', labels);
               
-              // 将标签名称转换为 LabelUpdateInput 格式
-              const labelUpdates = labels.map(name => ({ name: name }));
+              // 先查询现有标签，获取标签 ID
+              const query = `
+                query($owner: String!, $repo: String!, $number: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    discussion(number: $number) {
+                      labels(first: 100) {
+                        nodes { id name }
+                      }
+                    }
+                  }
+                }
+              `;
+              const labelResult = await github.graphql(query, { owner, repo, number: targetNumber });
+              const existingLabels = labelResult.repository.discussion.labels.nodes;
               
+              const labelIds = [];
+              for (const labelName of labels) {
+                // 检查标签是否已存在
+                let existing = existingLabels.find(l => l.name === labelName);
+                if (!existing) {
+                  // 如果标签不存在，先创建标签
+                  const repositoryId = await getRepositoryId();
+                  const createMutation = `
+                    mutation($repositoryId: ID!, $name: String!, $color: String!) {
+                      createLabel(input: { repositoryId: $repositoryId, name: $name, color: $color }) {
+                        label { id }
+                      }
+                    }
+                  `;
+                  // 生成随机颜色（6位十六进制）
+                  const color = Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+                  
+                  const createResult = await github.graphql(createMutation, {
+                    repositoryId,
+                    name: labelName,
+                    color: color
+                  });
+                  existing = createResult.createLabel.label;
+                  console.log('创建新标签:', labelName, 'ID:', existing.id);
+                }
+                if (existing) {
+                  labelIds.push(existing.id);
+                }
+              }
+              
+              if (labelIds.length === 0) {
+                console.log('没有有效的标签可添加');
+                return;
+              }
+              
+              // 使用 labelId 添加标签
               const mutation = `
-                mutation($labelableId: ID!, $labels: [LabelUpdateInput!]!) {
+                mutation($labelableId: ID!, $labelIds: [ID!]!) {
                   addLabelsToLabelable(input: {
                     labelableId: $labelableId,
-                    labels: $labels
+                    labelIds: $labelIds
                   }) {
                     clientMutationId
                   }
@@ -153,7 +213,7 @@ jobs:
               `;
               const result = await github.graphql(mutation, { 
                 labelableId, 
-                labels: labelUpdates 
+                labelIds: labelIds 
               });
               console.log('添加标签结果:', JSON.stringify(result, null, 2));
             }
@@ -207,7 +267,7 @@ jobs:
               return result.repository.discussion.labels.nodes.map(l => l.name);
             }
 
-            // ==================== 锁定/解锁 Discussion（正确的 GraphQL Mutation） ====================
+            // ==================== 锁定/解锁 Discussion ====================
             async function discussionLock() {
               const discussionId = await getDiscussionId();
               const mutation = `
