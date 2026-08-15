@@ -118,14 +118,109 @@ jobs:
             };
             const allPriorityLabels = Object.values(priorityLabels);
 
+            // ==================== Discussion 标签操作（GraphQL） ====================
+            async function discussionAddLabels(labels) {
+              const mutation = `
+                mutation($owner: String!, $repo: String!, $number: Int!, $labels: [String!]!) {
+                  addLabelsToLabelable(input: {
+                    labelableId: $labelableId,
+                    labels: $labels
+                  }) {
+                    clientMutationId
+                  }
+                }
+              `;
+              // 先获取 Discussion 的 node_id
+              const query = `
+                query($owner: String!, $repo: String!, $number: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    discussion(number: $number) {
+                      id
+                    }
+                  }
+                }
+              `;
+              const result = await github.graphql(query, { owner, repo, number: targetNumber });
+              const labelableId = result.repository.discussion.id;
+              
+              for (const label of labels) {
+                await github.graphql(mutation, {
+                  labelableId,
+                  labels: [label]
+                }).catch(() => {});
+              }
+            }
+
+            async function discussionRemoveLabel(label) {
+              // 获取所有标签，找到要删除的标签的 node_id
+              const query = `
+                query($owner: String!, $repo: String!, $number: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    discussion(number: $number) {
+                      labels(first: 100) {
+                        nodes {
+                          id
+                          name
+                        }
+                      }
+                    }
+                  }
+                }
+              `;
+              const result = await github.graphql(query, { owner, repo, number: targetNumber });
+              const labels = result.repository.discussion.labels.nodes;
+              const targetLabel = labels.find(l => l.name === label);
+              if (targetLabel) {
+                const mutation = `
+                  mutation($labelableId: ID!, $labelId: ID!) {
+                    removeLabelsFromLabelable(input: {
+                      labelableId: $labelableId,
+                      labelIds: [$labelId]
+                    }) {
+                      clientMutationId
+                    }
+                  }
+                `;
+                // 获取 Discussion 的 node_id
+                const idQuery = `
+                  query($owner: String!, $repo: String!, $number: Int!) {
+                    repository(owner: $owner, name: $repo) {
+                      discussion(number: $number) {
+                        id
+                      }
+                    }
+                  }
+                `;
+                const idResult = await github.graphql(idQuery, { owner, repo, number: targetNumber });
+                await github.graphql(mutation, {
+                  labelableId: idResult.repository.discussion.id,
+                  labelId: targetLabel.id
+                }).catch(() => {});
+              }
+            }
+
+            async function discussionGetLabels() {
+              const query = `
+                query($owner: String!, $repo: String!, $number: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    discussion(number: $number) {
+                      labels(first: 100) {
+                        nodes {
+                          name
+                        }
+                      }
+                    }
+                  }
+                }
+              `;
+              const result = await github.graphql(query, { owner, repo, number: targetNumber });
+              return result.repository.discussion.labels.nodes.map(l => l.name);
+            }
+
             // ==================== API 适配器 ====================
             async function getCurrentLabels() {
               if (isDiscussion) {
-                const result = await github.rest.discussions.listLabels({
-                  owner, repo,
-                  discussion_number: targetNumber
-                });
-                return result.data.map(l => l.name);
+                return await discussionGetLabels();
               } else {
                 const result = await github.rest.issues.listLabelsOnIssue({
                   issue_number: targetNumber, owner, repo
@@ -139,11 +234,7 @@ jobs:
               for (const label of current) {
                 if (!keepLabels.includes(label)) {
                   if (isDiscussion) {
-                    await github.rest.discussions.removeLabel({
-                      owner, repo,
-                      discussion_number: targetNumber,
-                      name: label
-                    }).catch(() => {});
+                    await discussionRemoveLabel(label);
                   } else {
                     await github.rest.issues.removeLabel({
                       issue_number: targetNumber, owner, repo,
@@ -155,11 +246,7 @@ jobs:
               const filtered = newLabels.filter(l => l && l.length > 0);
               if (filtered.length > 0) {
                 if (isDiscussion) {
-                  await github.rest.discussions.addLabels({
-                    owner, repo,
-                    discussion_number: targetNumber,
-                    labels: filtered
-                  });
+                  await discussionAddLabels(filtered);
                 } else {
                   await github.rest.issues.addLabels({
                     issue_number: targetNumber, owner, repo,
@@ -173,11 +260,7 @@ jobs:
               const filtered = labels.filter(l => l && l.length > 0);
               if (filtered.length > 0) {
                 if (isDiscussion) {
-                  await github.rest.discussions.addLabels({
-                    owner, repo,
-                    discussion_number: targetNumber,
-                    labels: filtered
-                  });
+                  await discussionAddLabels(filtered);
                 } else {
                   await github.rest.issues.addLabels({
                     issue_number: targetNumber, owner, repo,
@@ -190,11 +273,7 @@ jobs:
             async function removeLabelsOnly(labels) {
               for (const label of labels) {
                 if (isDiscussion) {
-                  await github.rest.discussions.removeLabel({
-                    owner, repo,
-                    discussion_number: targetNumber,
-                    name: label
-                  }).catch(() => {});
+                  await discussionRemoveLabel(label);
                 } else {
                   await github.rest.issues.removeLabel({
                     issue_number: targetNumber, owner, repo,
