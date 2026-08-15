@@ -118,19 +118,8 @@ jobs:
             };
             const allPriorityLabels = Object.values(priorityLabels);
 
-            // ==================== Discussion 标签操作（GraphQL） ====================
-            async function discussionAddLabels(labels) {
-              const mutation = `
-                mutation($owner: String!, $repo: String!, $number: Int!, $labels: [String!]!) {
-                  addLabelsToLabelable(input: {
-                    labelableId: $labelableId,
-                    labels: $labels
-                  }) {
-                    clientMutationId
-                  }
-                }
-              `;
-              // 先获取 Discussion 的 node_id
+            // ==================== GraphQL 辅助函数（Discussions） ====================
+            async function getDiscussionId() {
               const query = `
                 query($owner: String!, $repo: String!, $number: Int!) {
                   repository(owner: $owner, name: $repo) {
@@ -141,8 +130,45 @@ jobs:
                 }
               `;
               const result = await github.graphql(query, { owner, repo, number: targetNumber });
-              const labelableId = result.repository.discussion.id;
-              
+              return result.repository.discussion.id;
+            }
+
+            async function discussionLock() {
+              const discussionId = await getDiscussionId();
+              const mutation = `
+                mutation($discussionId: ID!) {
+                  lockDiscussion(input: { discussionId: $discussionId, lockReason: RESOLVED }) {
+                    clientMutationId
+                  }
+                }
+              `;
+              await github.graphql(mutation, { discussionId }).catch(() => {});
+            }
+
+            async function discussionUnlock() {
+              const discussionId = await getDiscussionId();
+              const mutation = `
+                mutation($discussionId: ID!) {
+                  unlockDiscussion(input: { discussionId: $discussionId }) {
+                    clientMutationId
+                  }
+                }
+              `;
+              await github.graphql(mutation, { discussionId }).catch(() => {});
+            }
+
+            async function discussionAddLabels(labels) {
+              const labelableId = await getDiscussionId();
+              const mutation = `
+                mutation($labelableId: ID!, $labels: [String!]!) {
+                  addLabelsToLabelable(input: {
+                    labelableId: $labelableId,
+                    labels: $labels
+                  }) {
+                    clientMutationId
+                  }
+                }
+              `;
               for (const label of labels) {
                 await github.graphql(mutation, {
                   labelableId,
@@ -152,7 +178,6 @@ jobs:
             }
 
             async function discussionRemoveLabel(label) {
-              // 获取所有标签，找到要删除的标签的 node_id
               const query = `
                 query($owner: String!, $repo: String!, $number: Int!) {
                   repository(owner: $owner, name: $repo) {
@@ -171,6 +196,7 @@ jobs:
               const labels = result.repository.discussion.labels.nodes;
               const targetLabel = labels.find(l => l.name === label);
               if (targetLabel) {
+                const labelableId = await getDiscussionId();
                 const mutation = `
                   mutation($labelableId: ID!, $labelId: ID!) {
                     removeLabelsFromLabelable(input: {
@@ -181,19 +207,8 @@ jobs:
                     }
                   }
                 `;
-                // 获取 Discussion 的 node_id
-                const idQuery = `
-                  query($owner: String!, $repo: String!, $number: Int!) {
-                    repository(owner: $owner, name: $repo) {
-                      discussion(number: $number) {
-                        id
-                      }
-                    }
-                  }
-                `;
-                const idResult = await github.graphql(idQuery, { owner, repo, number: targetNumber });
                 await github.graphql(mutation, {
-                  labelableId: idResult.repository.discussion.id,
+                  labelableId,
                   labelId: targetLabel.id
                 }).catch(() => {});
               }
@@ -285,11 +300,7 @@ jobs:
 
             async function lockComments() {
               if (isDiscussion) {
-                await github.rest.discussions.lock({
-                  owner, repo,
-                  discussion_number: targetNumber,
-                  lock_reason: 'resolved'
-                }).catch(() => {});
+                await discussionLock();
               } else {
                 await github.rest.issues.lock({
                   issue_number: targetNumber, owner, repo,
@@ -300,10 +311,7 @@ jobs:
 
             async function unlockComments() {
               if (isDiscussion) {
-                await github.rest.discussions.unlock({
-                  owner, repo,
-                  discussion_number: targetNumber
-                }).catch(() => {});
+                await discussionUnlock();
               } else {
                 await github.rest.issues.unlock({
                   issue_number: targetNumber, owner, repo
