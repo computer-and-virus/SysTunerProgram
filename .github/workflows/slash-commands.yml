@@ -106,7 +106,7 @@ jobs:
             // ==================== 标签定义 ====================
             const keepLabels = [
               'BUG', '优化', '其它', '初始化', '新功能', '未分类',
-              '菜单功能', '菜单界面', '🔒评论区已锁定🔒'
+              '菜单功能', '菜单界面', '🔒评论区已锁定🔒', '版本介绍', '公告', '指引'
             ];
 
             const priorityLabels = {
@@ -423,7 +423,7 @@ jobs:
             }
 
             async function closeIssue(state, closeLabel) {
-              await setLabels(['⛔已关闭⛔', closeLabel]);
+              await setLabels(['⛔关闭⛔', closeLabel]);
               if (isDiscussion) {
                 await github.rest.discussions.update({
                   owner, repo,
@@ -472,17 +472,17 @@ jobs:
             }
 
             if (body === '/关闭提交完成') {
-              await closeIssue('completed', '✅已完成且已应用✅');
+              await closeIssue('completed', '✅完成且已应用✅');
               return;
             }
 
             if (body === '/提交完成') {
-              await setLabels(['⏳已完成但未应用⏳']);
+              await setLabels(['⏳完成但未应用⏳']);
               return;
             }
 
             if (body === '/挂起提交') {
-              await setLabels(['⏸️已挂起⏸️']);
+              await setLabels(['⏸️挂起⏸️']);
               return;
             }
 
@@ -512,7 +512,7 @@ jobs:
             }
 
             if (body === '/关闭提交合并') {
-              await closeIssue('completed', '🔀已合并🔀');
+              await closeIssue('completed', '🔀合并🔀');
               return;
             }
 
