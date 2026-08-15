@@ -25,10 +25,10 @@ jobs:
        github.event.comment.body == '/暂无计划' ||
        github.event.comment.body == '/关闭评论区' ||
        github.event.comment.body == '/开启评论区' ||
-       github.event.comment.body == '/关闭对话过时' ||
-       github.event.comment.body == '/关闭对话完成' ||
-       github.event.comment.body == '/关闭对话重复' ||
-       github.event.comment.body == '/开启对话' ||
+       github.event.comment.body == '/关闭讨论过时' ||
+       github.event.comment.body == '/关闭讨论完成' ||
+       github.event.comment.body == '/关闭讨论重复' ||
+       github.event.comment.body == '/开启讨论' ||
        startsWith(github.event.comment.body, '/增加标签 ') ||
        startsWith(github.event.comment.body, '/移除标签 ') ||
        startsWith(github.event.comment.body, '/增加并更改标签 '))
