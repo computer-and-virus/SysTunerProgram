@@ -28,6 +28,7 @@ jobs:
        github.event.comment.body == '/关闭对话过时' ||
        github.event.comment.body == '/关闭对话完成' ||
        github.event.comment.body == '/关闭对话重复' ||
+       github.event.comment.body == '/开启对话' ||
        startsWith(github.event.comment.body, '/增加标签 ') ||
        startsWith(github.event.comment.body, '/移除标签 ') ||
        startsWith(github.event.comment.body, '/增加并更改标签 '))
@@ -561,7 +562,7 @@ jobs:
               return;
             }
 
-            // ==================== 新增三个 Discussion 专用命令 ====================
+            // ==================== Discussion 专用命令 ====================
             if (body === '/关闭对话过时') {
               console.log('执行 /关闭对话过时 命令');
               await setLabels(['⛔关闭⛔', '🕰️过时🕰️']);
@@ -603,6 +604,13 @@ jobs:
                   state_reason: 'duplicate'
                 });
               }
+              return;
+            }
+
+            // ==================== 新增：开启对话 ====================
+            if (body === '/开启对话') {
+              console.log('执行 /开启对话 命令');
+              await reopenIssue();
               return;
             }
 
