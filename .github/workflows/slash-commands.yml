@@ -145,6 +145,29 @@ jobs:
               return result.repository.id;
             }
 
+            // ==================== 获取仓库级别所有标签 ====================
+            async function getRepositoryLabels() {
+              const query = `
+                query($owner: String!, $repo: String!) {
+                  repository(owner: $owner, name: $repo) {
+                    labels(first: 100) {
+                      nodes {
+                        id
+                        name
+                      }
+                    }
+                  }
+                }
+              `;
+              try {
+                const result = await github.graphql(query, { owner, repo });
+                return result.repository.labels.nodes || [];
+              } catch (e) {
+                console.log('获取仓库标签失败:', e.message);
+                return [];
+              }
+            }
+
             // ==================== Discussion 标签操作（GraphQL） ====================
             async function discussionAddLabels(labels) {
               const filtered = labels.filter(l => l && l.length > 0);
@@ -154,33 +177,16 @@ jobs:
               console.log('labelableId:', labelableId);
               console.log('要添加的标签:', filtered);
 
-              // 获取已有标签
-              const query = `
-                query($owner: String!, $repo: String!, $number: Int!) {
-                  repository(owner: $owner, name: $repo) {
-                    discussion(number: $number) {
-                      labels(first: 100) {
-                        nodes { id name }
-                      }
-                    }
-                  }
-                }
-              `;
-              let existingLabels = [];
-              try {
-                const result = await github.graphql(query, { owner, repo, number: targetNumber });
-                existingLabels = result.repository.discussion.labels.nodes || [];
-                console.log('已有标签:', existingLabels.map(l => l.name));
-              } catch (e) {
-                console.log('获取已有标签失败:', e.message);
-              }
+              // 获取仓库级别的所有标签
+              const repoLabels = await getRepositoryLabels();
+              console.log('仓库已有标签:', repoLabels.map(l => l.name));
 
               const labelIds = [];
               const repositoryId = await getRepositoryId();
 
               for (const labelName of filtered) {
-                // 先检查标签是否已存在
-                let existing = existingLabels.find(l => l.name === labelName);
+                // 检查标签是否在仓库级别存在
+                let existing = repoLabels.find(l => l.name === labelName);
                 if (existing) {
                   console.log('标签已存在，直接使用:', labelName, 'ID:', existing.id);
                   labelIds.push(existing.id);
@@ -205,20 +211,16 @@ jobs:
                   const newLabel = createResult.createLabel.label;
                   console.log('创建标签成功:', labelName, 'ID:', newLabel.id);
                   labelIds.push(newLabel.id);
-                  existingLabels.push({ id: newLabel.id, name: labelName });
                 } catch (createError) {
                   console.log('创建标签失败:', labelName, createError.message);
-                  // 重试：再次查询标签
-                  try {
-                    const retryResult = await github.graphql(query, { owner, repo, number: targetNumber });
-                    const retryLabels = retryResult.repository.discussion.labels.nodes || [];
-                    const retryExisting = retryLabels.find(l => l.name === labelName);
-                    if (retryExisting) {
-                      console.log('重试成功，找到标签:', labelName, 'ID:', retryExisting.id);
-                      labelIds.push(retryExisting.id);
-                    }
-                  } catch (retryError) {
-                    console.log('重试获取标签失败:', retryError.message);
+                  // 如果创建失败，可能是并发创建导致，重新获取仓库标签
+                  const refreshedLabels = await getRepositoryLabels();
+                  const retryExisting = refreshedLabels.find(l => l.name === labelName);
+                  if (retryExisting) {
+                    console.log('重试成功，找到标签:', labelName, 'ID:', retryExisting.id);
+                    labelIds.push(retryExisting.id);
+                  } else {
+                    console.log('标签创建失败且无法找回，跳过:', labelName);
                   }
                 }
               }
@@ -243,6 +245,7 @@ jobs:
             }
 
             async function discussionRemoveLabel(label) {
+              // 获取 Discussion 当前的标签（不是仓库级别）
               const query = `
                 query($owner: String!, $repo: String!, $number: Int!) {
                   repository(owner: $owner, name: $repo) {
@@ -271,7 +274,7 @@ jobs:
                 await github.graphql(mutation, { labelableId, labelId: targetLabel.id });
                 console.log('移除标签成功:', label);
               } else {
-                console.log('标签不存在，无需移除:', label);
+                console.log('标签不在当前 Discussion 上，无需移除:', label);
               }
             }
 
