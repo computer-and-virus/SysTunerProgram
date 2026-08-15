@@ -129,141 +129,280 @@ jobs:
                 }
               `;
               const result = await github.graphql(query, { owner, repo, number: targetNumber });
-              console.log('getDiscussionId 结果:', JSON.stringify(result, null, 2));
+              console.log('getDiscussionId:', JSON.stringify(result, null, 2));
               return result.repository.discussion.id;
             }
 
-            // ==================== 标签操作（统一使用 REST API） ====================
+            async function getRepositoryId() {
+              const query = `
+                query($owner: String!, $repo: String!) {
+                  repository(owner: $owner, name: $repo) {
+                    id
+                  }
+                }
+              `;
+              const result = await github.graphql(query, { owner, repo });
+              return result.repository.id;
+            }
+
+            // ==================== Discussion 标签操作（GraphQL） ====================
+            async function discussionAddLabels(labels) {
+              const filtered = labels.filter(l => l && l.length > 0);
+              if (filtered.length === 0) return;
+
+              const labelableId = await getDiscussionId();
+              console.log('labelableId:', labelableId);
+              console.log('要添加的标签:', filtered);
+
+              // 先获取已有标签
+              const query = `
+                query($owner: String!, $repo: String!, $number: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    discussion(number: $number) {
+                      labels(first: 100) {
+                        nodes { id name }
+                      }
+                    }
+                  }
+                }
+              `;
+              let existingLabels = [];
+              try {
+                const result = await github.graphql(query, { owner, repo, number: targetNumber });
+                existingLabels = result.repository.discussion.labels.nodes || [];
+              } catch (e) {
+                console.log('获取已有标签失败:', e.message);
+              }
+
+              const labelIds = [];
+              const repositoryId = await getRepositoryId();
+
+              for (const labelName of filtered) {
+                let existing = existingLabels.find(l => l.name === labelName);
+                if (!existing) {
+                  // 创建标签
+                  const color = Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
+                  const createMutation = `
+                    mutation($repositoryId: ID!, $name: String!, $color: String!) {
+                      createLabel(input: { repositoryId: $repositoryId, name: $name, color: $color }) {
+                        label { id }
+                      }
+                    }
+                  `;
+                  try {
+                    const createResult = await github.graphql(createMutation, {
+                      repositoryId,
+                      name: labelName,
+                      color: color
+                    });
+                    existing = createResult.createLabel.label;
+                    console.log('创建标签:', labelName, 'ID:', existing.id);
+                  } catch (e) {
+                    console.log('创建标签失败:', labelName, e.message);
+                    continue;
+                  }
+                }
+                if (existing) {
+                  labelIds.push(existing.id);
+                }
+              }
+
+              if (labelIds.length === 0) {
+                console.log('没有标签可添加');
+                return;
+              }
+
+              const mutation = `
+                mutation($labelableId: ID!, $labelIds: [ID!]!) {
+                  addLabelsToLabelable(input: {
+                    labelableId: $labelableId,
+                    labelIds: $labelIds
+                  }) {
+                    clientMutationId
+                  }
+                }
+              `;
+              const result = await github.graphql(mutation, { labelableId, labelIds });
+              console.log('添加标签结果:', JSON.stringify(result, null, 2));
+            }
+
+            async function discussionRemoveLabel(label) {
+              const query = `
+                query($owner: String!, $repo: String!, $number: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    discussion(number: $number) {
+                      labels(first: 100) {
+                        nodes { id name }
+                      }
+                    }
+                  }
+                }
+              `;
+              const result = await github.graphql(query, { owner, repo, number: targetNumber });
+              const targetLabel = result.repository.discussion.labels.nodes.find(l => l.name === label);
+              if (targetLabel) {
+                const labelableId = await getDiscussionId();
+                const mutation = `
+                  mutation($labelableId: ID!, $labelId: ID!) {
+                    removeLabelsFromLabelable(input: {
+                      labelableId: $labelableId,
+                      labelIds: [$labelId]
+                    }) {
+                      clientMutationId
+                    }
+                  }
+                `;
+                await github.graphql(mutation, { labelableId, labelId: targetLabel.id });
+                console.log('移除标签成功:', label);
+              } else {
+                console.log('标签不存在，无需移除:', label);
+              }
+            }
+
+            async function discussionGetLabels() {
+              const query = `
+                query($owner: String!, $repo: String!, $number: Int!) {
+                  repository(owner: $owner, name: $repo) {
+                    discussion(number: $number) {
+                      labels(first: 100) {
+                        nodes { name }
+                      }
+                    }
+                  }
+                }
+              `;
+              const result = await github.graphql(query, { owner, repo, number: targetNumber });
+              return result.repository.discussion.labels.nodes.map(l => l.name);
+            }
+
+            // ==================== 锁定/解锁 Discussion ====================
+            async function discussionLock() {
+              const discussionId = await getDiscussionId();
+              const mutation = `
+                mutation lock($discussionId: ID!) {
+                  lockLockable(input: { lockableId: $discussionId }) {
+                    lockedRecord {
+                      locked
+                      activeLockReason
+                    }
+                  }
+                }
+              `;
+              const result = await github.graphql(mutation, { discussionId });
+              console.log('锁定结果:', JSON.stringify(result, null, 2));
+            }
+
+            async function discussionUnlock() {
+              const discussionId = await getDiscussionId();
+              const mutation = `
+                mutation unlock($discussionId: ID!) {
+                  unlockLockable(input: { lockableId: $discussionId }) {
+                    unlockedRecord {
+                      locked
+                    }
+                  }
+                }
+              `;
+              const result = await github.graphql(mutation, { discussionId });
+              console.log('解锁结果:', JSON.stringify(result, null, 2));
+            }
+
+            // ==================== API 适配器 ====================
+            async function getCurrentLabels() {
+              if (isDiscussion) {
+                return await discussionGetLabels();
+              } else {
+                const result = await github.rest.issues.listLabelsOnIssue({
+                  issue_number: targetNumber, owner, repo
+                });
+                return result.data.map(l => l.name);
+              }
+            }
+
             async function addLabelsOnly(labels) {
               const filtered = labels.filter(l => l && l.length > 0);
               if (filtered.length === 0) return;
 
-              console.log('准备添加标签 (REST API):', filtered);
+              console.log('准备添加标签:', filtered);
               console.log('isDiscussion:', isDiscussion);
               console.log('targetNumber:', targetNumber);
 
-              try {
-                // 统一使用 REST API 的 issues 端点添加标签
+              if (isDiscussion) {
+                await discussionAddLabels(filtered);
+              } else {
                 await github.rest.issues.addLabels({
+                  issue_number: targetNumber,
                   owner: owner,
                   repo: repo,
-                  issue_number: targetNumber,
                   labels: filtered
                 });
-                console.log('REST API 添加标签成功');
-              } catch (error) {
-                console.error('REST API 添加标签失败:', error.message);
-                throw error;
               }
             }
 
             async function removeLabelsOnly(labels) {
               for (const label of labels) {
-                console.log('准备移除标签 (REST API):', label);
-                try {
+                console.log('准备移除标签:', label);
+                if (isDiscussion) {
+                  await discussionRemoveLabel(label);
+                } else {
                   await github.rest.issues.removeLabel({
+                    issue_number: targetNumber,
                     owner: owner,
                     repo: repo,
-                    issue_number: targetNumber,
                     name: label
-                  });
-                  console.log('REST API 移除标签成功:', label);
-                } catch (error) {
-                  console.log('REST API 移除标签失败（可能不存在）:', label, error.message);
+                  }).catch(() => {});
                 }
               }
             }
 
-            async function getCurrentLabels() {
-              try {
-                const result = await github.rest.issues.listLabelsOnIssue({
-                  owner: owner,
-                  repo: repo,
-                  issue_number: targetNumber
-                });
-                return result.data.map(l => l.name);
-              } catch (error) {
-                console.error('获取当前标签失败:', error.message);
-                return [];
-              }
-            }
-
-            // ==================== 设置标签（保留保留标签） ====================
             async function setLabels(newLabels) {
               const current = await getCurrentLabels();
               for (const label of current) {
                 if (!keepLabels.includes(label)) {
-                  try {
+                  if (isDiscussion) {
+                    await discussionRemoveLabel(label);
+                  } else {
                     await github.rest.issues.removeLabel({
-                      owner: owner,
-                      repo: repo,
-                      issue_number: targetNumber,
+                      issue_number: targetNumber, owner, repo,
                       name: label
-                    });
-                    console.log('移除标签:', label);
-                  } catch (e) {
-                    console.log('移除标签失败（可能不存在）:', label);
+                    }).catch(() => {});
                   }
                 }
               }
               const filtered = newLabels.filter(l => l && l.length > 0);
               if (filtered.length > 0) {
-                await addLabelsOnly(filtered);
+                if (isDiscussion) {
+                  await discussionAddLabels(filtered);
+                } else {
+                  await github.rest.issues.addLabels({
+                    issue_number: targetNumber, owner, repo,
+                    labels: filtered
+                  });
+                }
               }
             }
 
-            // ==================== 锁定/解锁评论区 ====================
             async function lockComments() {
               if (isDiscussion) {
-                const discussionId = await getDiscussionId();
-                const mutation = `
-                  mutation lock($discussionId: ID!) {
-                    lockLockable(input: { lockableId: $discussionId }) {
-                      lockedRecord {
-                        locked
-                        activeLockReason
-                      }
-                    }
-                  }
-                `;
-                const result = await github.graphql(mutation, { discussionId });
-                console.log('锁定 Discussion 结果:', JSON.stringify(result, null, 2));
+                await discussionLock();
               } else {
                 await github.rest.issues.lock({
-                  issue_number: targetNumber,
-                  owner: owner,
-                  repo: repo,
+                  issue_number: targetNumber, owner, repo,
                   lock_reason: 'resolved'
                 });
-                console.log('锁定 Issue/PR 成功');
               }
             }
 
             async function unlockComments() {
               if (isDiscussion) {
-                const discussionId = await getDiscussionId();
-                const mutation = `
-                  mutation unlock($discussionId: ID!) {
-                    unlockLockable(input: { lockableId: $discussionId }) {
-                      unlockedRecord {
-                        locked
-                      }
-                    }
-                  }
-                `;
-                const result = await github.graphql(mutation, { discussionId });
-                console.log('解锁 Discussion 结果:', JSON.stringify(result, null, 2));
+                await discussionUnlock();
               } else {
                 await github.rest.issues.unlock({
-                  issue_number: targetNumber,
-                  owner: owner,
-                  repo: repo
+                  issue_number: targetNumber, owner, repo
                 });
-                console.log('解锁 Issue/PR 成功');
               }
             }
 
-            // ==================== 关闭/开启 ====================
             async function closeIssue(state, closeLabel) {
               await setLabels(['⛔已关闭⛔', closeLabel]);
               if (isDiscussion) {
