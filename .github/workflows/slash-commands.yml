@@ -300,7 +300,6 @@ jobs:
                   closeDiscussion(input: { discussionId: $discussionId }) {
                     discussion {
                       id
-                      state
                     }
                   }
                 }
@@ -316,7 +315,6 @@ jobs:
                   reopenDiscussion(input: { discussionId: $discussionId }) {
                     discussion {
                       id
-                      state
                     }
                   }
                 }
