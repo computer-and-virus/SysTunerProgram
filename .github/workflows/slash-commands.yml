@@ -117,7 +117,7 @@ jobs:
               4: '🔥优先度：极高🔥'
             };
 
-            // ==================== GraphQL 辅助函数（Discussion 标签） ====================
+            // ==================== GraphQL 辅助函数（Discussion） ====================
             async function getDiscussionId() {
               const query = `
                 query($owner: String!, $repo: String!, $number: Int!) {
@@ -273,20 +273,21 @@ jobs:
               }
             }
 
-            // ==================== 锁定/解锁评论区（使用 REST API） ====================
+            // ==================== 锁定/解锁评论区 ====================
             async function lockComments() {
               if (isDiscussion) {
-                // Discussion 使用 REST API 锁定
-                await github.request('PUT /repos/{owner}/{repo}/discussions/{discussion_number}/lock', {
-                  owner: owner,
-                  repo: repo,
-                  discussion_number: targetNumber,
-                  lock_reason: 'resolved'
-                }).catch((err) => {
+                const discussionId = await getDiscussionId();
+                const mutation = `
+                  mutation($discussionId: ID!) {
+                    lockDiscussion(input: { discussionId: $discussionId, lockReason: RESOLVED }) {
+                      clientMutationId
+                    }
+                  }
+                `;
+                await github.graphql(mutation, { discussionId }).catch((err) => {
                   console.log('锁定 Discussion 失败:', err.message);
                 });
               } else {
-                // Issue/PR 使用 REST API 锁定
                 await github.rest.issues.lock({
                   issue_number: targetNumber,
                   owner: owner,
@@ -298,16 +299,18 @@ jobs:
 
             async function unlockComments() {
               if (isDiscussion) {
-                // Discussion 使用 REST API 解锁
-                await github.request('DELETE /repos/{owner}/{repo}/discussions/{discussion_number}/lock', {
-                  owner: owner,
-                  repo: repo,
-                  discussion_number: targetNumber
-                }).catch((err) => {
+                const discussionId = await getDiscussionId();
+                const mutation = `
+                  mutation($discussionId: ID!) {
+                    unlockDiscussion(input: { discussionId: $discussionId }) {
+                      clientMutationId
+                    }
+                  }
+                `;
+                await github.graphql(mutation, { discussionId }).catch((err) => {
                   console.log('解锁 Discussion 失败:', err.message);
                 });
               } else {
-                // Issue/PR 使用 REST API 解锁
                 await github.rest.issues.unlock({
                   issue_number: targetNumber,
                   owner: owner,
