@@ -137,8 +137,12 @@ jobs:
               const labelableId = await getDiscussionId();
               console.log('labelableId:', labelableId);
               console.log('要添加的标签:', labels);
+              
+              // 将标签名称转换为 LabelUpdateInput 格式
+              const labelUpdates = labels.map(name => ({ name: name }));
+              
               const mutation = `
-                mutation($labelableId: ID!, $labels: [String!]!) {
+                mutation($labelableId: ID!, $labels: [LabelUpdateInput!]!) {
                   addLabelsToLabelable(input: {
                     labelableId: $labelableId,
                     labels: $labels
@@ -147,7 +151,10 @@ jobs:
                   }
                 }
               `;
-              const result = await github.graphql(mutation, { labelableId, labels: labels });
+              const result = await github.graphql(mutation, { 
+                labelableId, 
+                labels: labelUpdates 
+              });
               console.log('添加标签结果:', JSON.stringify(result, null, 2));
             }
 
