@@ -116,9 +116,8 @@ jobs:
               3: '🔴优先度：高🔴',
               4: '🔥优先度：极高🔥'
             };
-            const allPriorityLabels = Object.values(priorityLabels);
 
-            // ==================== GraphQL 辅助函数（Discussions） ====================
+            // ==================== GraphQL 辅助函数（Discussion 标签） ====================
             async function getDiscussionId() {
               const query = `
                 query($owner: String!, $repo: String!, $number: Int!) {
@@ -131,30 +130,6 @@ jobs:
               `;
               const result = await github.graphql(query, { owner, repo, number: targetNumber });
               return result.repository.discussion.id;
-            }
-
-            async function discussionLock() {
-              const discussionId = await getDiscussionId();
-              const mutation = `
-                mutation($discussionId: ID!) {
-                  lockDiscussion(input: { discussionId: $discussionId, lockReason: RESOLVED }) {
-                    clientMutationId
-                  }
-                }
-              `;
-              await github.graphql(mutation, { discussionId }).catch(() => {});
-            }
-
-            async function discussionUnlock() {
-              const discussionId = await getDiscussionId();
-              const mutation = `
-                mutation($discussionId: ID!) {
-                  unlockDiscussion(input: { discussionId: $discussionId }) {
-                    clientMutationId
-                  }
-                }
-              `;
-              await github.graphql(mutation, { discussionId }).catch(() => {});
             }
 
             async function discussionAddLabels(labels) {
@@ -298,12 +273,24 @@ jobs:
               }
             }
 
+            // ==================== 锁定/解锁评论区（使用 REST API） ====================
             async function lockComments() {
               if (isDiscussion) {
-                await discussionLock();
+                // Discussion 使用 REST API 锁定
+                await github.request('PUT /repos/{owner}/{repo}/discussions/{discussion_number}/lock', {
+                  owner: owner,
+                  repo: repo,
+                  discussion_number: targetNumber,
+                  lock_reason: 'resolved'
+                }).catch((err) => {
+                  console.log('锁定 Discussion 失败:', err.message);
+                });
               } else {
+                // Issue/PR 使用 REST API 锁定
                 await github.rest.issues.lock({
-                  issue_number: targetNumber, owner, repo,
+                  issue_number: targetNumber,
+                  owner: owner,
+                  repo: repo,
                   lock_reason: 'resolved'
                 }).catch(() => {});
               }
@@ -311,14 +298,25 @@ jobs:
 
             async function unlockComments() {
               if (isDiscussion) {
-                await discussionUnlock();
+                // Discussion 使用 REST API 解锁
+                await github.request('DELETE /repos/{owner}/{repo}/discussions/{discussion_number}/lock', {
+                  owner: owner,
+                  repo: repo,
+                  discussion_number: targetNumber
+                }).catch((err) => {
+                  console.log('解锁 Discussion 失败:', err.message);
+                });
               } else {
+                // Issue/PR 使用 REST API 解锁
                 await github.rest.issues.unlock({
-                  issue_number: targetNumber, owner, repo
+                  issue_number: targetNumber,
+                  owner: owner,
+                  repo: repo
                 }).catch(() => {});
               }
             }
 
+            // ==================== 关闭/开启 ====================
             async function closeIssue(state, closeLabel) {
               await setLabels(['⛔已关闭⛔', closeLabel]);
               if (isDiscussion) {
@@ -390,7 +388,7 @@ jobs:
               if (isNaN(num) || num < 0 || num > 4) {
                 await setLabels(['🔧处理中🔧']);
               } else {
-                const priorityLabel = priorityLabels[num] || '';
+                const priorityLabel = priorityLabels[num];
                 const finalLabels = ['🔧处理中🔧'];
                 if (priorityLabel) finalLabels.push(priorityLabel);
                 await setLabels(finalLabels);
