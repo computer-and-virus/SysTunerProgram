@@ -25,6 +25,9 @@ jobs:
        github.event.comment.body == '/暂无计划' ||
        github.event.comment.body == '/关闭评论区' ||
        github.event.comment.body == '/开启评论区' ||
+       github.event.comment.body == '/关闭对话过时' ||
+       github.event.comment.body == '/关闭对话完成' ||
+       github.event.comment.body == '/关闭对话重复' ||
        startsWith(github.event.comment.body, '/增加标签 ') ||
        startsWith(github.event.comment.body, '/移除标签 ') ||
        startsWith(github.event.comment.body, '/增加并更改标签 '))
@@ -177,7 +180,6 @@ jobs:
               console.log('labelableId:', labelableId);
               console.log('要添加的标签:', filtered);
 
-              // 获取仓库级别的所有标签
               const repoLabels = await getRepositoryLabels();
               console.log('仓库已有标签:', repoLabels.map(l => l.name));
 
@@ -185,7 +187,6 @@ jobs:
               const repositoryId = await getRepositoryId();
 
               for (const labelName of filtered) {
-                // 检查标签是否在仓库级别存在
                 let existing = repoLabels.find(l => l.name === labelName);
                 if (existing) {
                   console.log('标签已存在，直接使用:', labelName, 'ID:', existing.id);
@@ -193,7 +194,6 @@ jobs:
                   continue;
                 }
 
-                // 标签不存在，创建新标签
                 const color = Math.floor(Math.random()*16777215).toString(16).padStart(6, '0');
                 const createMutation = `
                   mutation($repositoryId: ID!, $name: String!, $color: String!) {
@@ -213,7 +213,6 @@ jobs:
                   labelIds.push(newLabel.id);
                 } catch (createError) {
                   console.log('创建标签失败:', labelName, createError.message);
-                  // 如果创建失败，可能是并发创建导致，重新获取仓库标签
                   const refreshedLabels = await getRepositoryLabels();
                   const retryExisting = refreshedLabels.find(l => l.name === labelName);
                   if (retryExisting) {
@@ -245,7 +244,6 @@ jobs:
             }
 
             async function discussionRemoveLabel(label) {
-              // 获取 Discussion 当前的标签（不是仓库级别）
               const query = `
                 query($owner: String!, $repo: String!, $number: Int!) {
                   repository(owner: $owner, name: $repo) {
@@ -401,6 +399,22 @@ jobs:
               }
             }
 
+            async function closeDiscussionOnly(state) {
+              if (isDiscussion) {
+                await github.rest.discussions.update({
+                  owner, repo,
+                  discussion_number: targetNumber,
+                  state: 'closed'
+                });
+              } else {
+                await github.rest.issues.update({
+                  issue_number: targetNumber, owner, repo,
+                  state: 'closed',
+                  state_reason: state || 'completed'
+                });
+              }
+            }
+
             async function lockComments() {
               if (isDiscussion) {
                 await discussionLock();
@@ -537,6 +551,67 @@ jobs:
               console.log('执行 /开启评论区 命令');
               await removeLabelsOnly(['🔒评论区已锁定🔒']);
               await unlockComments();
+              return;
+            }
+
+            // ==================== 新增三个 Discussion 专用命令 ====================
+            if (body === '/关闭对话过时') {
+              console.log('执行 /关闭对话过时 命令');
+              // 删除所有非保留标签，添加 ⛔关闭⛔ + 🕰️过时🕰️，关闭对话（状态：过时）
+              await setLabels(['⛔关闭⛔', '🕰️过时🕰️']);
+              if (isDiscussion) {
+                await github.rest.discussions.update({
+                  owner, repo,
+                  discussion_number: targetNumber,
+                  state: 'closed'
+                });
+              } else {
+                // 如果是 Issue，使用 not_planned 状态
+                await github.rest.issues.update({
+                  issue_number: targetNumber, owner, repo,
+                  state: 'closed',
+                  state_reason: 'not_planned'
+                });
+              }
+              return;
+            }
+
+            if (body === '/关闭对话完成') {
+              console.log('执行 /关闭对话完成 命令');
+              // 纯关闭，不添加任何标签
+              if (isDiscussion) {
+                await github.rest.discussions.update({
+                  owner, repo,
+                  discussion_number: targetNumber,
+                  state: 'closed'
+                });
+              } else {
+                await github.rest.issues.update({
+                  issue_number: targetNumber, owner, repo,
+                  state: 'closed',
+                  state_reason: 'completed'
+                });
+              }
+              return;
+            }
+
+            if (body === '/关闭对话重复') {
+              console.log('执行 /关闭对话重复 命令');
+              // 与 Issue 一样，但需添加标签 🔁重复🔁
+              await addLabelsOnly(['🔁重复🔁']);
+              if (isDiscussion) {
+                await github.rest.discussions.update({
+                  owner, repo,
+                  discussion_number: targetNumber,
+                  state: 'closed'
+                });
+              } else {
+                await github.rest.issues.update({
+                  issue_number: targetNumber, owner, repo,
+                  state: 'closed',
+                  state_reason: 'duplicate'
+                });
+              }
               return;
             }
 
