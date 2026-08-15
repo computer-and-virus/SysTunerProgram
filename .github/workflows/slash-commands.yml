@@ -117,7 +117,7 @@ jobs:
               4: '🔥优先度：极高🔥'
             };
 
-            // ==================== GraphQL 辅助函数（Discussion 标签） ====================
+            // ==================== GraphQL 辅助函数（Discussion） ====================
             async function getDiscussionId() {
               const query = `
                 query($owner: String!, $repo: String!, $number: Int!) {
@@ -145,10 +145,7 @@ jobs:
                 }
               `;
               for (const label of labels) {
-                await github.graphql(mutation, {
-                  labelableId,
-                  labels: [label]
-                }).catch(() => {});
+                await github.graphql(mutation, { labelableId, labels: [label] }).catch(() => {});
               }
             }
 
@@ -158,18 +155,14 @@ jobs:
                   repository(owner: $owner, name: $repo) {
                     discussion(number: $number) {
                       labels(first: 100) {
-                        nodes {
-                          id
-                          name
-                        }
+                        nodes { id name }
                       }
                     }
                   }
                 }
               `;
               const result = await github.graphql(query, { owner, repo, number: targetNumber });
-              const labels = result.repository.discussion.labels.nodes;
-              const targetLabel = labels.find(l => l.name === label);
+              const targetLabel = result.repository.discussion.labels.nodes.find(l => l.name === label);
               if (targetLabel) {
                 const labelableId = await getDiscussionId();
                 const mutation = `
@@ -182,10 +175,7 @@ jobs:
                     }
                   }
                 `;
-                await github.graphql(mutation, {
-                  labelableId,
-                  labelId: targetLabel.id
-                }).catch(() => {});
+                await github.graphql(mutation, { labelableId, labelId: targetLabel.id }).catch(() => {});
               }
             }
 
@@ -195,9 +185,7 @@ jobs:
                   repository(owner: $owner, name: $repo) {
                     discussion(number: $number) {
                       labels(first: 100) {
-                        nodes {
-                          name
-                        }
+                        nodes { name }
                       }
                     }
                   }
@@ -205,6 +193,31 @@ jobs:
               `;
               const result = await github.graphql(query, { owner, repo, number: targetNumber });
               return result.repository.discussion.labels.nodes.map(l => l.name);
+            }
+
+            // ==================== 锁定/解锁 Discussion（GraphQL） ====================
+            async function discussionLock() {
+              const discussionId = await getDiscussionId();
+              const mutation = `
+                mutation($discussionId: ID!) {
+                  lockDiscussion(input: { discussionId: $discussionId, lockReason: RESOLVED }) {
+                    clientMutationId
+                  }
+                }
+              `;
+              return await github.graphql(mutation, { discussionId });
+            }
+
+            async function discussionUnlock() {
+              const discussionId = await getDiscussionId();
+              const mutation = `
+                mutation($discussionId: ID!) {
+                  unlockDiscussion(input: { discussionId: $discussionId }) {
+                    clientMutationId
+                  }
+                }
+              `;
+              return await github.graphql(mutation, { discussionId });
             }
 
             // ==================== API 适配器 ====================
@@ -273,31 +286,27 @@ jobs:
               }
             }
 
-            // ==================== 锁定/解锁评论区 ====================
             async function lockComments() {
-              const resourceType = isDiscussion ? 'discussions' : 'issues';
-              await github.request(`PUT /repos/{owner}/{repo}/${resourceType}/{number}/lock`, {
-                owner: owner,
-                repo: repo,
-                number: targetNumber,
-                lock_reason: 'resolved'
-              }).catch((err) => {
-                console.log(`锁定 ${resourceType} 失败:`, err.message);
-              });
+              if (isDiscussion) {
+                await discussionLock();
+              } else {
+                await github.rest.issues.lock({
+                  issue_number: targetNumber, owner, repo,
+                  lock_reason: 'resolved'
+                });
+              }
             }
 
             async function unlockComments() {
-              const resourceType = isDiscussion ? 'discussions' : 'issues';
-              await github.request(`DELETE /repos/{owner}/{repo}/${resourceType}/{number}/lock`, {
-                owner: owner,
-                repo: repo,
-                number: targetNumber
-              }).catch((err) => {
-                console.log(`解锁 ${resourceType} 失败:`, err.message);
-              });
+              if (isDiscussion) {
+                await discussionUnlock();
+              } else {
+                await github.rest.issues.unlock({
+                  issue_number: targetNumber, owner, repo
+                });
+              }
             }
 
-            // ==================== 关闭/开启 ====================
             async function closeIssue(state, closeLabel) {
               await setLabels(['⛔已关闭⛔', closeLabel]);
               if (isDiscussion) {
