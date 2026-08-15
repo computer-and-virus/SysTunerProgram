@@ -5,13 +5,11 @@ on:
     types: [created]
   pull_request_review_comment:
     types: [created]
-  discussion_comment:
-    types: [created]
 
 jobs:
   slash-commands:
     if: |
-      (github.event.issue || github.event.discussion) &&
+      (github.event.issue.pull_request || github.event.issue) &&
       (github.event.comment.body == '/关闭提交重复' ||
        github.event.comment.body == '/关闭提交放弃' ||
        github.event.comment.body == '/关闭提交完成' ||
@@ -32,7 +30,6 @@ jobs:
     permissions:
       issues: write
       pull-requests: write
-      discussions: write
 
     steps:
       - name: 检查管理员权限
@@ -49,9 +46,13 @@ jobs:
                 core.setOutput('isAdmin', 'true');
                 return;
               }
+
               const permission = await github.rest.repos.getCollaboratorPermissionLevel({
-                owner, repo, username
+                owner,
+                repo,
+                username
               });
+
               const perm = permission.data.permission;
               if (perm === 'admin' || perm === 'write') {
                 core.setOutput('isAdmin', 'true');
@@ -69,24 +70,17 @@ jobs:
         uses: actions/github-script@v7
         with:
           script: |
-            const commentId = context.payload.comment.id;
+            const issueNumber = context.payload.issue.number;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
             const errorMsg = process.env.ERROR_MSG || '权限不足，只有仓库管理员可以执行此命令。';
             
-            if (context.payload.issue) {
-              await github.rest.reactions.createForIssueComment({
-                owner, repo,
-                comment_id: commentId,
-                content: 'confused'
-              });
-            } else if (context.payload.discussion) {
-              await github.rest.reactions.createForDiscussionComment({
-                owner, repo,
-                comment_id: commentId,
-                content: 'confused'
-              });
-            }
+            await github.rest.issues.createComment({
+              issue_number: issueNumber,
+              owner,
+              repo,
+              body: `❌ **权限不足**\n\n${errorMsg}\n\n只有仓库管理员（Owner 或 Write 权限）才能使用斜杠命令。`
+            });
         env:
           ERROR_MSG: ${{ steps.check_permission.outputs.errorMsg }}
 
@@ -96,14 +90,12 @@ jobs:
         with:
           script: |
             const comment = context.payload.comment.body;
+            const issueNumber = context.payload.issue.number;
             const owner = context.repo.owner;
             const repo = context.repo.repo;
-            const isDiscussion = !!context.payload.discussion;
-            const isPR = !!context.payload.issue?.pull_request;
-            
-            const targetNumber = context.payload.issue?.number || context.payload.discussion?.number;
+            const isPR = !!context.payload.issue.pull_request;
 
-            // ==================== 标签定义 ====================
+            // ===================== 保留标签定义 =====================
             const keepLabels = [
               'BUG', '优化', '其它', '初始化', '新功能', '未分类',
               '菜单功能', '菜单界面', '🔒评论区已锁定🔒'
@@ -117,282 +109,138 @@ jobs:
               4: '🔥优先度：极高🔥'
             };
 
-            // ==================== GraphQL 辅助函数（Discussion） ====================
-            async function getDiscussionId() {
-              const query = `
-                query($owner: String!, $repo: String!, $number: Int!) {
-                  repository(owner: $owner, name: $repo) {
-                    discussion(number: $number) {
-                      id
-                    }
-                  }
-                }
-              `;
-              const result = await github.graphql(query, { owner, repo, number: targetNumber });
-              return result.repository.discussion.id;
-            }
+            const allPriorityLabels = Object.values(priorityLabels);
 
-            async function discussionAddLabels(labels) {
-              const labelableId = await getDiscussionId();
-              const mutation = `
-                mutation($labelableId: ID!, $labels: [String!]!) {
-                  addLabelsToLabelable(input: {
-                    labelableId: $labelableId,
-                    labels: $labels
-                  }) {
-                    clientMutationId
-                  }
-                }
-              `;
-              for (const label of labels) {
-                await github.graphql(mutation, { labelableId, labels: [label] }).catch(() => {});
-              }
-            }
-
-            async function discussionRemoveLabel(label) {
-              const query = `
-                query($owner: String!, $repo: String!, $number: Int!) {
-                  repository(owner: $owner, name: $repo) {
-                    discussion(number: $number) {
-                      labels(first: 100) {
-                        nodes { id name }
-                      }
-                    }
-                  }
-                }
-              `;
-              const result = await github.graphql(query, { owner, repo, number: targetNumber });
-              const targetLabel = result.repository.discussion.labels.nodes.find(l => l.name === label);
-              if (targetLabel) {
-                const labelableId = await getDiscussionId();
-                const mutation = `
-                  mutation($labelableId: ID!, $labelId: ID!) {
-                    removeLabelsFromLabelable(input: {
-                      labelableId: $labelableId,
-                      labelIds: [$labelId]
-                    }) {
-                      clientMutationId
-                    }
-                  }
-                `;
-                await github.graphql(mutation, { labelableId, labelId: targetLabel.id }).catch(() => {});
-              }
-            }
-
-            async function discussionGetLabels() {
-              const query = `
-                query($owner: String!, $repo: String!, $number: Int!) {
-                  repository(owner: $owner, name: $repo) {
-                    discussion(number: $number) {
-                      labels(first: 100) {
-                        nodes { name }
-                      }
-                    }
-                  }
-                }
-              `;
-              const result = await github.graphql(query, { owner, repo, number: targetNumber });
-              return result.repository.discussion.labels.nodes.map(l => l.name);
-            }
-
-            // ==================== 锁定/解锁 Discussion（正确的 GraphQL Mutation） ====================
-            async function discussionLock() {
-              const discussionId = await getDiscussionId();
-              const mutation = `
-                mutation lock($discussionId: ID!) {
-                  lockLockable(input: { lockableId: $discussionId }) {
-                    lockedRecord {
-                      locked
-                      activeLockReason
-                    }
-                  }
-                }
-              `;
-              const result = await github.graphql(mutation, { discussionId });
-              console.log('锁定 Discussion 结果:', JSON.stringify(result, null, 2));
-              return result;
-            }
-
-            async function discussionUnlock() {
-              const discussionId = await getDiscussionId();
-              const mutation = `
-                mutation unlock($discussionId: ID!) {
-                  unlockLockable(input: { lockableId: $discussionId }) {
-                    unlockedRecord {
-                      locked
-                    }
-                  }
-                }
-              `;
-              const result = await github.graphql(mutation, { discussionId });
-              console.log('解锁 Discussion 结果:', JSON.stringify(result, null, 2));
-              return result;
-            }
-
-            // ==================== API 适配器 ====================
             async function getCurrentLabels() {
-              if (isDiscussion) {
-                return await discussionGetLabels();
-              } else {
-                const result = await github.rest.issues.listLabelsOnIssue({
-                  issue_number: targetNumber, owner, repo
-                });
-                return result.data.map(l => l.name);
-              }
+              const result = await github.rest.issues.listLabelsOnIssue({
+                issue_number: issueNumber,
+                owner, repo
+              });
+              return result.data.map(l => l.name);
             }
 
             async function setLabels(newLabels) {
               const current = await getCurrentLabels();
               for (const label of current) {
                 if (!keepLabels.includes(label)) {
-                  if (isDiscussion) {
-                    await discussionRemoveLabel(label);
-                  } else {
-                    await github.rest.issues.removeLabel({
-                      issue_number: targetNumber, owner, repo,
-                      name: label
-                    }).catch(() => {});
-                  }
-                }
-              }
-              const filtered = newLabels.filter(l => l && l.length > 0);
-              if (filtered.length > 0) {
-                if (isDiscussion) {
-                  await discussionAddLabels(filtered);
-                } else {
-                  await github.rest.issues.addLabels({
-                    issue_number: targetNumber, owner, repo,
-                    labels: filtered
-                  });
-                }
-              }
-            }
-
-            async function addLabelsOnly(labels) {
-              const filtered = labels.filter(l => l && l.length > 0);
-              if (filtered.length > 0) {
-                if (isDiscussion) {
-                  await discussionAddLabels(filtered);
-                } else {
-                  await github.rest.issues.addLabels({
-                    issue_number: targetNumber, owner, repo,
-                    labels: filtered
-                  });
-                }
-              }
-            }
-
-            async function removeLabelsOnly(labels) {
-              for (const label of labels) {
-                if (isDiscussion) {
-                  await discussionRemoveLabel(label);
-                } else {
                   await github.rest.issues.removeLabel({
-                    issue_number: targetNumber, owner, repo,
+                    issue_number: issueNumber,
+                    owner, repo,
                     name: label
                   }).catch(() => {});
                 }
               }
-            }
-
-            // ==================== 锁定/解锁评论区 ====================
-            async function lockComments() {
-              if (isDiscussion) {
-                await discussionLock();
-              } else {
-                await github.rest.issues.lock({
-                  issue_number: targetNumber,
-                  owner: owner,
-                  repo: repo,
-                  lock_reason: 'resolved'
-                });
-              }
-            }
-
-            async function unlockComments() {
-              if (isDiscussion) {
-                await discussionUnlock();
-              } else {
-                await github.rest.issues.unlock({
-                  issue_number: targetNumber,
-                  owner: owner,
-                  repo: repo
+              const filtered = newLabels.filter(l => l && l.length > 0);
+              if (filtered.length > 0) {
+                await github.rest.issues.addLabels({
+                  issue_number: issueNumber,
+                  owner, repo,
+                  labels: filtered
                 });
               }
             }
 
             async function closeIssue(state, closeLabel) {
               await setLabels(['⛔已关闭⛔', closeLabel]);
-              if (isDiscussion) {
-                await github.rest.discussions.update({
+              await github.rest.issues.update({
+                issue_number: issueNumber,
+                owner, repo,
+                state: 'closed',
+                state_reason: state || 'completed'
+              });
+            }
+
+            async function addLabelsOnly(labels) {
+              const filtered = labels.filter(l => l && l.length > 0);
+              if (filtered.length > 0) {
+                await github.rest.issues.addLabels({
+                  issue_number: issueNumber,
                   owner, repo,
-                  discussion_number: targetNumber,
-                  state: 'closed'
-                });
-              } else {
-                await github.rest.issues.update({
-                  issue_number: targetNumber, owner, repo,
-                  state: 'closed',
-                  state_reason: state || 'completed'
+                  labels: filtered
                 });
               }
+            }
+
+            async function removeLabelsOnly(labels) {
+              for (const label of labels) {
+                await github.rest.issues.removeLabel({
+                  issue_number: issueNumber,
+                  owner, repo,
+                  name: label
+                }).catch(() => {});
+              }
+            }
+
+            async function lockComments() {
+              await github.rest.issues.lock({
+                issue_number: issueNumber,
+                owner, repo,
+                lock_reason: 'resolved'
+              });
+            }
+
+            async function unlockComments() {
+              await github.rest.issues.unlock({
+                issue_number: issueNumber,
+                owner, repo
+              }).catch(() => {});
             }
 
             async function reopenIssue() {
-              if (isDiscussion) {
-                await github.rest.discussions.update({
-                  owner, repo,
-                  discussion_number: targetNumber,
-                  state: 'open'
-                });
-              } else {
-                await github.rest.issues.update({
-                  issue_number: targetNumber, owner, repo,
-                  state: 'open'
-                });
-              }
+              await github.rest.issues.update({
+                issue_number: issueNumber,
+                owner, repo,
+                state: 'open'
+              });
             }
 
-            // ==================== 命令处理 ====================
             const body = comment.trim();
 
+            // ----- /关闭提交重复 -----
             if (body === '/关闭提交重复') {
               await closeIssue('duplicate', '🔁重复🔁');
               return;
             }
 
+            // ----- /关闭提交放弃 -----
             if (body === '/关闭提交放弃') {
               await closeIssue('not_planned', '🙅拒绝 / 放弃🙅');
               return;
             }
 
+            // ----- /关闭提交完成 -----
             if (body === '/关闭提交完成') {
               await closeIssue('completed', '✅已完成且已应用✅');
               return;
             }
 
+            // ----- /提交完成 -----
             if (body === '/提交完成') {
               await setLabels(['⏳已完成但未应用⏳']);
               return;
             }
 
+            // ----- /挂起提交（使用 setLabels） -----
             if (body === '/挂起提交') {
               await setLabels(['⏸️已挂起⏸️']);
               return;
             }
 
+            // ----- /开始处理 -----
             if (body === '/开始处理') {
               await setLabels(['🔧处理中🔧']);
               return;
             }
 
+            // ----- /开始处理 [数字] -----
             if (body.startsWith('/开始处理 ')) {
               const parts = body.split(' ');
               const num = parseInt(parts[1]);
+              // 如果后面没有数字或数字无效，只加处理中标签
               if (isNaN(num) || num < 0 || num > 4) {
                 await setLabels(['🔧处理中🔧']);
               } else {
-                const priorityLabel = priorityLabels[num];
+                const priorityLabel = priorityLabels[num] || '';
                 const finalLabels = ['🔧处理中🔧'];
                 if (priorityLabel) finalLabels.push(priorityLabel);
                 await setLabels(finalLabels);
@@ -400,39 +248,46 @@ jobs:
               return;
             }
 
+            // ----- /开启提交 -----
             if (body === '/开启提交') {
               await setLabels(['🕐等待处理🕐']);
               await reopenIssue();
               return;
             }
 
+            // ----- /关闭提交合并 -----
             if (body === '/关闭提交合并') {
               await closeIssue('completed', '🔀已合并🔀');
               return;
             }
 
+            // ----- /等待提交者 -----
             if (body === '/等待提交者') {
               await setLabels(['🧑‍💻等待提交者🧑‍💻']);
               return;
             }
 
+            // ----- /暂无计划 -----
             if (body === '/暂无计划') {
               await setLabels(['🗓️暂无计划🗓️']);
               return;
             }
 
+            // ----- /关闭评论区 -----
             if (body === '/关闭评论区') {
               await addLabelsOnly(['🔒评论区已锁定🔒']);
               await lockComments();
               return;
             }
 
+            // ----- /开启评论区 -----
             if (body === '/开启评论区') {
               await removeLabelsOnly(['🔒评论区已锁定🔒']);
               await unlockComments();
               return;
             }
 
+            // ----- /增加标签 -----
             if (body.startsWith('/增加标签 ')) {
               const labelPart = body.substring('/增加标签 '.length).trim();
               const labels = labelPart.split(/\s+/).filter(l => l.length > 0);
@@ -442,6 +297,7 @@ jobs:
               return;
             }
 
+            // ----- /移除标签 -----
             if (body.startsWith('/移除标签 ')) {
               const labelPart = body.substring('/移除标签 '.length).trim();
               const labels = labelPart.split(/\s+/).filter(l => l.length > 0);
@@ -451,6 +307,7 @@ jobs:
               return;
             }
 
+            // ----- /增加并更改标签 -----
             if (body.startsWith('/增加并更改标签 ')) {
               const parts = body.substring('/增加并更改标签 '.length).trim().split(/\s+/);
               if (parts.length >= 2) {
