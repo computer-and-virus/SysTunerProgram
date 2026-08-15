@@ -292,12 +292,12 @@ jobs:
               return result.repository.discussion.labels.nodes.map(l => l.name);
             }
 
-            // ==================== 关闭/开启 Discussion（使用 GraphQL） ====================
+            // ==================== 关闭/开启 Discussion ====================
             async function closeDiscussionGraphQL() {
               const discussionId = await getDiscussionId();
               const mutation = `
                 mutation($discussionId: ID!) {
-                  updateDiscussion(input: { discussionId: $discussionId, state: CLOSED }) {
+                  closeDiscussion(input: { discussionId: $discussionId }) {
                     discussion {
                       id
                       state
@@ -305,14 +305,15 @@ jobs:
                   }
                 }
               `;
-              await github.graphql(mutation, { discussionId });
+              const result = await github.graphql(mutation, { discussionId });
+              console.log('关闭 Discussion 结果:', JSON.stringify(result, null, 2));
             }
 
             async function reopenDiscussionGraphQL() {
               const discussionId = await getDiscussionId();
               const mutation = `
                 mutation($discussionId: ID!) {
-                  updateDiscussion(input: { discussionId: $discussionId, state: OPEN }) {
+                  reopenDiscussion(input: { discussionId: $discussionId }) {
                     discussion {
                       id
                       state
@@ -320,7 +321,8 @@ jobs:
                   }
                 }
               `;
-              await github.graphql(mutation, { discussionId });
+              const result = await github.graphql(mutation, { discussionId });
+              console.log('重新开启 Discussion 结果:', JSON.stringify(result, null, 2));
             }
 
             // ==================== 锁定/解锁 Discussion ====================
