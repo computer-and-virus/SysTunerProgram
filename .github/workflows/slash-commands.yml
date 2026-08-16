@@ -452,6 +452,18 @@ jobs:
               }
             }
 
+            // ==================== 重新开启 Issue/PR/Discussion ====================
+            async function reopenIssue() {
+              if (isDiscussion) {
+                await reopenDiscussionGraphQL();
+              } else {
+                await github.rest.issues.update({
+                  issue_number: targetNumber, owner, repo,
+                  state: 'open'
+                });
+              }
+            }
+
             // ==================== 统一关闭函数（清除非保留标签 + 添加指定标签） ====================
             async function closeWithCleanup(state, labelsToAdd) {
               // 1. 清除所有非保留标签
