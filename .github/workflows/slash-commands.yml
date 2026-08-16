@@ -563,8 +563,8 @@ jobs:
             }
 
             // ==================== Discussion 专用命令 ====================
-            if (body === '/关闭对话过时') {
-              console.log('执行 /关闭对话过时 命令');
+            if (body === '/关闭讨论过时') {
+              console.log('执行 /关闭讨论过时 命令');
               await setLabels(['⛔关闭⛔', '🕰️过时🕰️']);
               if (isDiscussion) {
                 await closeDiscussionGraphQL();
@@ -578,8 +578,8 @@ jobs:
               return;
             }
 
-            if (body === '/关闭对话完成') {
-              console.log('执行 /关闭对话完成 命令');
+            if (body === '/关闭讨论完成') {
+              console.log('执行 /关闭讨论完成 命令');
               if (isDiscussion) {
                 await closeDiscussionGraphQL();
               } else {
@@ -592,8 +592,8 @@ jobs:
               return;
             }
 
-            if (body === '/关闭对话重复') {
-              console.log('执行 /关闭对话重复 命令');
+            if (body === '/关闭讨论重复') {
+              console.log('执行 /关闭讨论重复 命令');
               await addLabelsOnly(['🔁重复🔁']);
               if (isDiscussion) {
                 await closeDiscussionGraphQL();
@@ -607,9 +607,8 @@ jobs:
               return;
             }
 
-            // ==================== 新增：开启对话 ====================
-            if (body === '/开启对话') {
-              console.log('执行 /开启对话 命令');
+            if (body === '/开启讨论') {
+              console.log('执行 /开启讨论 命令');
               await reopenIssue();
               return;
             }
