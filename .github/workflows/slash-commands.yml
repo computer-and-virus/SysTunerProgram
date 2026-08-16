@@ -293,19 +293,20 @@ jobs:
               return result.repository.discussion.labels.nodes.map(l => l.name);
             }
 
-            // ==================== 关闭/开启 Discussion ====================
-            async function closeDiscussionGraphQL() {
+            // ==================== 关闭/开启 Discussion（支持关闭原因） ====================
+            async function closeDiscussionGraphQL(reason) {
               const discussionId = await getDiscussionId();
               const mutation = `
-                mutation($discussionId: ID!) {
-                  closeDiscussion(input: { discussionId: $discussionId }) {
+                mutation($discussionId: ID!, $reason: DiscussionCloseReason!) {
+                  closeDiscussion(input: { discussionId: $discussionId, reason: $reason }) {
                     discussion {
                       id
+                      stateReason
                     }
                   }
                 }
               `;
-              const result = await github.graphql(mutation, { discussionId });
+              const result = await github.graphql(mutation, { discussionId, reason });
               console.log('关闭 Discussion 结果:', JSON.stringify(result, null, 2));
             }
 
@@ -498,7 +499,14 @@ jobs:
               }
               // 3. 关闭 Issue/PR/Discussion
               if (isDiscussion) {
-                await closeDiscussionGraphQL();
+                // 将 state 映射为 GraphQL 的 DiscussionCloseReason
+                let reason = 'RESOLVED'; // 默认
+                if (state === 'not_planned') {
+                  reason = 'OUTDATED';
+                } else if (state === 'duplicate') {
+                  reason = 'DUPLICATE';
+                }
+                await closeDiscussionGraphQL(reason);
               } else {
                 await github.rest.issues.update({
                   issue_number: targetNumber, owner, repo,
