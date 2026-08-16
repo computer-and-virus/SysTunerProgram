@@ -610,8 +610,25 @@ jobs:
               return;
             }
 
+            // ==================== 开启讨论（清理非保留标签后开启） ====================
             if (body === '/开启讨论') {
               console.log('执行 /开启讨论 命令');
+              // 清理所有非保留标签
+              const currentLabels = await getCurrentLabels();
+              for (const label of currentLabels) {
+                if (!keepLabels.includes(label)) {
+                  if (isDiscussion) {
+                    await discussionRemoveLabel(label);
+                  } else {
+                    await github.rest.issues.removeLabel({
+                      issue_number: targetNumber, owner, repo,
+                      name: label
+                    }).catch(() => {});
+                  }
+                  console.log('移除标签:', label);
+                }
+              }
+              // 重新开启
               await reopenIssue();
               return;
             }
