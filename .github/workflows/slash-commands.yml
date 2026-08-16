@@ -452,8 +452,39 @@ jobs:
               }
             }
 
-            async function closeIssue(state, closeLabel) {
-              await setLabels(['⛔关闭⛔', closeLabel]);
+            // ==================== 统一关闭函数（清除非保留标签 + 添加指定标签） ====================
+            async function closeWithCleanup(state, labelsToAdd) {
+              // 1. 清除所有非保留标签
+              const currentLabels = await getCurrentLabels();
+              for (const label of currentLabels) {
+                if (!keepLabels.includes(label)) {
+                  if (isDiscussion) {
+                    await discussionRemoveLabel(label);
+                  } else {
+                    await github.rest.issues.removeLabel({
+                      issue_number: targetNumber, owner, repo,
+                      name: label
+                    }).catch(() => {});
+                  }
+                  console.log('移除标签:', label);
+                }
+              }
+              // 2. 添加新标签
+              if (labelsToAdd && labelsToAdd.length > 0) {
+                const filtered = labelsToAdd.filter(l => l && l.length > 0);
+                if (filtered.length > 0) {
+                  if (isDiscussion) {
+                    await discussionAddLabels(filtered);
+                  } else {
+                    await github.rest.issues.addLabels({
+                      issue_number: targetNumber, owner, repo,
+                      labels: filtered
+                    });
+                  }
+                  console.log('添加标签:', filtered);
+                }
+              }
+              // 3. 关闭 Issue/PR/Discussion
               if (isDiscussion) {
                 await closeDiscussionGraphQL();
               } else {
@@ -461,17 +492,6 @@ jobs:
                   issue_number: targetNumber, owner, repo,
                   state: 'closed',
                   state_reason: state || 'completed'
-                });
-              }
-            }
-
-            async function reopenIssue() {
-              if (isDiscussion) {
-                await reopenDiscussionGraphQL();
-              } else {
-                await github.rest.issues.update({
-                  issue_number: targetNumber, owner, repo,
-                  state: 'open'
                 });
               }
             }
@@ -484,17 +504,17 @@ jobs:
             console.log('targetNumber:', targetNumber);
 
             if (body === '/关闭提交重复') {
-              await closeIssue('duplicate', '🔁重复🔁');
+              await closeWithCleanup('duplicate', ['⛔关闭⛔', '🔁重复🔁']);
               return;
             }
 
             if (body === '/关闭提交放弃') {
-              await closeIssue('not_planned', '🙅拒绝 / 放弃🙅');
+              await closeWithCleanup('not_planned', ['⛔关闭⛔', '🙅拒绝 / 放弃🙅']);
               return;
             }
 
             if (body === '/关闭提交完成') {
-              await closeIssue('completed', '✅完成且已应用✅');
+              await closeWithCleanup('completed', ['⛔关闭⛔', '✅完成且已应用✅']);
               return;
             }
 
@@ -534,7 +554,7 @@ jobs:
             }
 
             if (body === '/关闭提交合并') {
-              await closeIssue('completed', '🔀合并🔀');
+              await closeWithCleanup('completed', ['⛔关闭⛔', '🔀合并🔀']);
               return;
             }
 
@@ -564,47 +584,17 @@ jobs:
 
             // ==================== Discussion 专用命令 ====================
             if (body === '/关闭讨论过时') {
-              console.log('执行 /关闭讨论过时 命令');
-              await setLabels(['⛔关闭⛔', '🕰️过时🕰️']);
-              if (isDiscussion) {
-                await closeDiscussionGraphQL();
-              } else {
-                await github.rest.issues.update({
-                  issue_number: targetNumber, owner, repo,
-                  state: 'closed',
-                  state_reason: 'not_planned'
-                });
-              }
+              await closeWithCleanup('not_planned', ['⛔关闭⛔', '🕰️过时🕰️']);
               return;
             }
 
             if (body === '/关闭讨论完成') {
-              console.log('执行 /关闭讨论完成 命令');
-              await setLabels(['⛔关闭⛔']);
-              if (isDiscussion) {
-                await closeDiscussionGraphQL();
-              } else {
-                await github.rest.issues.update({
-                  issue_number: targetNumber, owner, repo,
-                  state: 'closed',
-                  state_reason: 'completed'
-                });
-              }
+              await closeWithCleanup('completed', ['⛔关闭⛔']);
               return;
             }
 
             if (body === '/关闭讨论重复') {
-              console.log('执行 /关闭讨论重复 命令');
-              await setLabels(['⛔关闭⛔', '🔁重复🔁']);
-              if (isDiscussion) {
-                await closeDiscussionGraphQL();
-              } else {
-                await github.rest.issues.update({
-                  issue_number: targetNumber, owner, repo,
-                  state: 'closed',
-                  state_reason: 'duplicate'
-                });
-              }
+              await closeWithCleanup('duplicate', ['⛔关闭⛔', '🔁重复🔁']);
               return;
             }
 
