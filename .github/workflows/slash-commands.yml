@@ -580,6 +580,7 @@ jobs:
 
             if (body === '/关闭讨论完成') {
               console.log('执行 /关闭讨论完成 命令');
+              await setLabels(['⛔关闭⛔']);
               if (isDiscussion) {
                 await closeDiscussionGraphQL();
               } else {
@@ -594,7 +595,7 @@ jobs:
 
             if (body === '/关闭讨论重复') {
               console.log('执行 /关闭讨论重复 命令');
-              await addLabelsOnly(['🔁重复🔁']);
+              await setLabels(['⛔关闭⛔', '🔁重复🔁']);
               if (isDiscussion) {
                 await closeDiscussionGraphQL();
               } else {
