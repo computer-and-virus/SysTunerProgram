@@ -1,5 +1,5 @@
-name: "其它BUG反馈"
-description: "点击此选项反馈其它BUG，通常是与程序毫不相关的BUG，反馈程序BUG请点击程序BUG反馈"
+name: "其它 Bug 反馈"
+description: "点击此选项反馈其它Bug，通常是与程序毫不相关的Bug，反馈程序Bug请点击程序 BUG 反馈"
 labels: ["BUG", "🆕新提交🆕"]
 body:
   - type: markdown
@@ -16,7 +16,7 @@ body:
       options:
         - label: "我已在 [Issues 页面](https://github.com/computer-and-virus/SysTunerProgram/issues) 中搜索，确认了这个 Bug 从未被提交过。"
           required: true
-        - label: "我已确认我提交的BUG是与程序毫不相关的。"
+        - label: "我已确认我提交的 Bug 是与程序毫不相关的。"
           required: true
     validations:
       required: true
@@ -34,7 +34,7 @@ body:
     id: description
     attributes:
       label: 描述问题
-      description: "请在下方大输入框中详细描述你所遇到的BUG，例如在哪，具体表现等："
+      description: "请在下方大输入框中详细描述你所遇到的Bug，例如在哪，具体表现等："
       placeholder: "例：我发现在...出现...问题，具体是..."
     validations:
       required: true
