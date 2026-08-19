@@ -5,4 +5,4 @@ test1
 https://ghproxy.net/https://github.com/computer-and-virus/SysTunerProgram/releases/download/test/SysTunerProgram.bat
 https://github.com/computer-and-virus/SysTunerProgram/releases/download/test/SysTunerProgram.bat
 public
-普通更新
+regular
