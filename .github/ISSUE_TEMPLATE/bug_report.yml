@@ -1,5 +1,5 @@
-name: "程序BUG反馈"
-description: "点击此选项反馈程序BUG，包括程序的输出BUG，命令BUG，读取BUG等"
+name: "程序 Bug 反馈"
+description: "点击此选项反馈程序Bug，包括程序的输出Bug，命令Bug，读取Bug等"
 labels: ["BUG", "🆕新提交🆕"]
 body:
   - type: markdown
@@ -18,7 +18,7 @@ body:
           required: true
         - label: "我已确认我的程序版本已为最新版本。"
           required: true
-        - label: "我已确认完全是程序本身BUG，而不是客观因素与人为因素影响，包括电脑网络没连好导致下载失败，手动修改配置文件导致配置文件读取失败等。"
+        - label: "我已确认完全是程序本身Bug，而不是客观因素与人为因素影响，包括电脑网络没连好导致下载失败，手动修改配置文件导致配置文件读取失败等。"
           required: true
     validations:
       required: true
@@ -50,7 +50,7 @@ body:
     id: description
     attributes:
       label: 描述问题
-      description: "请在下方大输入框中详细描述你所遇到的BUG，例如在哪，具体表现等："
+      description: "请在下方大输入框中详细描述你所遇到的Bug，例如在哪，具体表现等："
       placeholder: "例：我发现在...出现...问题，具体是..."
     validations:
       required: true
